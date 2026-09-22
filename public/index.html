@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GNN Tox21</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-wrapper">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="logo-area">
+                    <div class="logo-icon"><i class="fa-solid fa-atom"></i></div>
+                    <div>
+                        <h1>GNN Molecular Tox21</h1>
+                        <p class="subtitle">Deep GNN for Drug Discovery & Bio-Toxicity Screening</p>
+                    </div>
+                </div>
+                <div class="header-badges">
+                    <span class="badge badge-tech"><i class="fa-solid fa-microchip"></i> PyTorch Geometric 2.8</span>
+                    <span class="badge badge-tech"><i class="fa-solid fa-flask-vial"></i> RDKit Featurizer</span>
+                    <span class="badge badge-scaffold"><i class="fa-solid fa-dna"></i> Scaffold Split</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-grid">
+            <!-- Left Panel: Input & Control -->
+            <section class="card input-card">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-vial"></i> Molecular Input</h2>
+                </div>
+                
+                <div class="form-group">
+                    <label for="smiles-input">Chemical SMILES String</label>
+                    <div class="input-with-button">
+                        <input type="text" id="smiles-input" placeholder="e.g. CC(=O)OC1=CC=CC=C1C(=O)O" value="CC(=O)OC1=CC=CC=C1C(=O)O">
+                        <button id="btn-predict" class="btn btn-primary">
+                            <i class="fa-solid fa-play"></i> Run GNN
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="compound-name-input">Chemical Name</label>
+                    <div class="input-with-button">
+                        <input type="text" id="compound-name-input" placeholder="e.g. aspirin, caffeine, ibuprofen">
+                        <button id="btn-resolve-name" class="btn btn-primary">
+                            <i class="fa-solid fa-magnifying-glass"></i> Resolve to SMILES
+                        </button>
+                    </div>
+                    <small id="name-resolve-status" class="name-resolve-status" role="status" aria-live="polite"></small>
+                </div>
+
+                <div class="form-group">
+                    <label>Preset Molecule Library</label>
+                    <div class="preset-chips" id="preset-chips">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>GNN Architecture Model</label>
+                    <div class="arch-selector">
+                        <button class="arch-btn active" data-arch="gcn">
+                            <i class="fa-solid fa-diagram-project"></i> GCN
+                        </button>
+                        <button class="arch-btn" data-arch="gin">
+                            <i class="fa-solid fa-network-wired"></i> GIN (1-WL)
+                        </button>
+                        <button class="arch-btn" data-arch="mpnn">
+                            <i class="fa-solid fa-share-nodes"></i> MPNN
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="task-select">Atom Saliency Target Endpoint</label>
+                    <select id="task-select" class="form-select">
+                        <!-- Populated with 12 Tox21 tasks -->
+                    </select>
+                </div>
+            </section>
+
+            <!-- Right Panel: Molecule Graph & Saliency -->
+            <section class="card viz-card">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-draw-polygon"></i> 2D Molecular Graph & Atom Saliency</h2>
+                    <span id="molecule-meta" class="meta-tag">13 Atoms | Aspirin</span>
+                </div>
+                <div class="svg-container" id="svg-container">
+                    <div class="placeholder-state">
+                        <i class="fa-solid fa-atom fa-spin fa-2x"></i>
+                        <p>Click "Run GNN" to visualize molecular graph and saliency heatmap.</p>
+                    </div>
+                </div>
+                <div class="legend-bar">
+                    <span>Atom Saliency Gradient (dLogit / dAtom):</span>
+                    <div class="gradient-bar"></div>
+                    <div class="gradient-labels">
+                        <span>Low Impact</span>
+                        <span>Toxicophore (High)</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Full Width Bottom Section: 12 Assay Endpoints -->
+            <section class="card endpoints-card span-2">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-chart-simple"></i> Tox21 Assay Screening (12 Endpoints)</h2>
+                    <div class="summary-stats">
+                        <span class="stat-pill stat-safe" id="stat-safe-count"><i class="fa-solid fa-check"></i> 12 Safe</span>
+                        <span class="stat-pill stat-toxic" id="stat-toxic-count"><i class="fa-solid fa-triangle-exclamation"></i> 0 Toxic</span>
+                    </div>
+                </div>
+
+                <div class="endpoints-grid" id="endpoints-grid">
+                    <!-- 12 Cards populated by JS -->
+                </div>
+            </section>
+
+            <!-- Full Width DDI Severity Section -->
+            <section class="card ddi-card span-2">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-pills"></i> Drug-Drug Interaction Severity</h2>
+                    <span class="meta-tag">3-Class DDI Model</span>
+                </div>
+
+                <div class="ddi-form-grid">
+                    <div class="form-group">
+                        <label for="ddi-name-a">Drug A</label>
+                        <input type="text" id="ddi-name-a" placeholder="e.g. warfarin">
+                    </div>
+                    <div class="form-group">
+                        <label for="ddi-name-b">Drug B</label>
+                        <input type="text" id="ddi-name-b" placeholder="e.g. aspirin">
+                    </div>
+                    <div class="form-group">
+                        <label for="ddi-arch-select">DDI Architecture</label>
+                        <select id="ddi-arch-select" class="form-select">
+                            <option value="gcn" selected>GCN</option>
+                            <option value="gin">GIN</option>
+                        </select>
+                    </div>
+                    <div class="form-group ddi-action-group">
+                        <label>&nbsp;</label>
+                        <button id="btn-check-interaction" class="btn btn-primary">
+                            <i class="fa-solid fa-triangle-exclamation"></i> Check Interaction
+                        </button>
+                    </div>
+                </div>
+
+                <small id="ddi-status" class="ddi-status" role="status" aria-live="polite"></small>
+                <div id="ddi-result" class="ddi-result" hidden></div>
+                <div id="ddi-summary" class="ddi-summary" hidden></div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>GNN for Molecular Property Prediction | Tox21 Bioassay Benchmarks |</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

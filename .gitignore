@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch & Dataset Caches
+data/processed/
+data/raw/*.gz
+data/raw/*.csv
+data/raw/ddinter_smiles_cache.json
+models/*.pt
+
+# Python virtual environments
+venv/
+.venv/
+env/
+
+# OS & IDE junk
+.DS_Store
+.vscode/
+.idea/
+*.log
