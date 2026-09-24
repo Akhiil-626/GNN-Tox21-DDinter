@@ -327,21 +327,65 @@ def resolve_name_to_smiles():
 
 def fetch_ddinter_interaction(id_a: str, id_b: str) -> dict | None:
     """Fetch a direct DDInter interaction record for two DDInter IDs."""
-    url = f"https://ddinter.scbdd.com/ddinter/interact-with/{id_a}/"
+    url = f"https://ddinter.scbdd.com/ddinter/grapher-datasource/{id_a}/"
+    headers = {
+        'User-Agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/153.0.0.0 Safari/537.36'
+        ),
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Referer': f'https://ddinter.scbdd.com/ddinter/drug-detail/{id_a}/',
+    }
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code != 200:
+            app.logger.warning('DDInter returned HTTP %s for %s', response.status_code, id_a)
+            return None
         data = response.json()
-        for entry in data.get('data', []):
-            if str(entry.get('drug_id')) == str(id_b):
-                return entry
-    except Exception as e:
+        if not isinstance(data, dict):
+            app.logger.warning('DDInter returned an unexpected JSON object for %s', id_a)
+            return None
+        interactions = data.get('interactions', [])
+        if not isinstance(interactions, list):
+            app.logger.warning('DDInter returned an invalid interactions list for %s', id_a)
+            return None
+        for interaction in interactions:
+            if not isinstance(interaction, dict):
+                continue
+            if str(interaction.get('id')) == str(id_b):
+                return {
+                    'drug_id': interaction.get('id'),
+                    'name': interaction.get('name'),
+                    'level': interaction.get('level', []),
+                    'actions': interaction.get('actions', []),
+                }
+    except (requests.RequestException, ValueError, TypeError) as e:
         app.logger.warning('DDInter lookup failed for %s -> %s: %s', id_a, id_b, e)
     return None
 
 
 def _ddinter_categories(entry: dict) -> list:
     """Return human-readable labels for active DDInter mechanism flags."""
+    actions = entry.get('actions', [])
+    if isinstance(actions, str):
+        actions = [actions]
+    action_labels = {
+        'synergy': 'synergistic effect',
+        'synergistic_effect': 'synergistic effect',
+        'antagonism': 'antagonistic effect',
+        'antagonistic_effect': 'antagonistic effect',
+        'metabolism': 'metabolic interaction',
+        'absorption': 'absorption interaction',
+        'distribution': 'distribution interaction',
+        'excretion': 'excretion interaction',
+        'others': 'other reported mechanism',
+    }
+    categories = [action_labels.get(str(action), str(action)) for action in actions if action]
+    if categories:
+        return categories
+
     category_labels = {
         'synergistic_effect': 'synergistic effect',
         'antagonistic_effect': 'antagonistic effect',
@@ -358,10 +402,15 @@ def generate_ollama_summary(name_a: str, name_b: str, entry: dict) -> str:
     """Generate a constrained plain-language summary from a DDInter record."""
     categories = _ddinter_categories(entry)
     category_text = ', '.join(categories) if categories else 'no specific mechanism categories listed'
+    levels = entry.get('level', [])
+    if isinstance(levels, str):
+        levels = [levels]
+    level_text = ', '.join(str(level) for level in levels if level) or 'not specified'
     frequency = entry.get('frequency')
     frequency_text = f' Frequency count: {frequency}.' if frequency is not None else ''
     prompt = (
         f"DDInter confirms an interaction between {name_a} and {name_b}. "
+        f"Reported severity: {level_text}. "
         f"Confirmed mechanism categories: {category_text}.{frequency_text}\n\n"
         "Only describe what is stated above. Do not add any other pharmacological claims, "
         "dosing advice, or medical recommendations not directly supported by the given "
