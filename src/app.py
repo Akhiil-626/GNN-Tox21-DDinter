@@ -8,6 +8,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import json
+import time
 import numpy as np
 import pandas as pd
 import requests
@@ -323,47 +324,109 @@ def resolve_name_to_smiles():
         return jsonify({'error': str(e)}), 504
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+    id_a = DDINTER_NAME_INDEX.get(name_a.lower())
+    id_b = DDINTER_NAME_INDEX.get(name_b.lower())
+    print(f"DEBUG: name_a='{name_a}' -> id_a={id_a}")
+    print(f"DEBUG: name_b='{name_b}' -> id_b={id_b}")
+
+    entry = fetch_ddinter_interaction(id_a, id_b)
+    print(f"DEBUG: entry found (a->b): {entry}")
+
+    if entry is None:
+        entry_reverse = fetch_ddinter_interaction(id_b, id_a)
+        print(f"DEBUG: entry found (b->a): {entry_reverse}")
 
 
-def fetch_ddinter_interaction(id_a: str, id_b: str) -> dict | None:
-    """Fetch a direct DDInter interaction record for two DDInter IDs."""
-    url = f"https://ddinter.scbdd.com/ddinter/grapher-datasource/{id_a}/"
-    headers = {
-        'User-Agent': (
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-            'AppleWebKit/537.36 (KHTML, like Gecko) '
-            'Chrome/153.0.0.0 Safari/537.36'
-        ),
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Referer': f'https://ddinter.scbdd.com/ddinter/drug-detail/{id_a}/',
+def _query_ddinter_page(
+    drug_id: str,
+    session: requests.Session,
+    max_retries: int = 2,
+) -> tuple[list | None, int]:
+    """Fetch one drug's DDInter interaction page with DataTables parameters."""
+    detail_url = f"https://ddinter.scbdd.com/ddinter/drug-detail/{drug_id}/"
+    visited_pages = getattr(session, '_ddinter_visited_detail_pages', set())
+    if drug_id not in visited_pages:
+        try:
+            session.get(detail_url, timeout=10)
+        except requests.RequestException as e:
+            print(f"DDInter detail page request failed for {drug_id}: {e}")
+        visited_pages.add(drug_id)
+        session._ddinter_visited_detail_pages = visited_pages
+
+    session.headers.update({"Referer": detail_url})
+    params = {
+        "draw": 1,
+        "start": 0,
+        "length": 500,
+        "search[value]": "",
+        "search[regex]": "false",
+        "order[0][column]": 0,
+        "order[0][dir]": "asc",
+        "columns[0][data]": "drug_id",
+        "columns[0][searchable]": "true",
+        "columns[0][orderable]": "true",
     }
+
+    last_status_code = 0
+    for attempt in range(1, max_retries + 2):
+        try:
+            response = session.get(
+                f"https://ddinter.scbdd.com/ddinter/interact-with/{drug_id}/",
+                params=params,
+                timeout=10,
+            )
+            last_status_code = response.status_code
+            print(f"DDInter interact-with attempt {attempt} for {drug_id}: {last_status_code}")
+            if last_status_code == 200:
+                try:
+                    data = response.json()
+                    rows = data.get('data')
+                    if isinstance(rows, list):
+                        return rows, last_status_code
+                except (ValueError, AttributeError):
+                    pass
+        except requests.RequestException as e:
+            last_status_code = getattr(getattr(e, 'response', None), 'status_code', 0) or 0
+            print(f"DDInter interact-with attempt {attempt} for {drug_id}: {last_status_code}")
+
+        if attempt <= max_retries:
+            time.sleep(1.5)
+
+    return None, last_status_code
+
+
+def fetch_ddinter_interaction(
+    id_a: str,
+    id_b: str,
+    max_retries: int = 2,
+) -> tuple[dict | None, str]:
+    """Find a DDInter record in either drug's interaction list."""
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+    })
+
     try:
-        response = requests.get(url, headers=headers, timeout=15)
-        if response.status_code != 200:
-            app.logger.warning('DDInter returned HTTP %s for %s', response.status_code, id_a)
-            return None
-        data = response.json()
-        if not isinstance(data, dict):
-            app.logger.warning('DDInter returned an unexpected JSON object for %s', id_a)
-            return None
-        interactions = data.get('interactions', [])
-        if not isinstance(interactions, list):
-            app.logger.warning('DDInter returned an invalid interactions list for %s', id_a)
-            return None
-        for interaction in interactions:
-            if not isinstance(interaction, dict):
-                continue
-            if str(interaction.get('id')) == str(id_b):
-                return {
-                    'drug_id': interaction.get('id'),
-                    'name': interaction.get('name'),
-                    'level': interaction.get('level', []),
-                    'actions': interaction.get('actions', []),
-                }
-    except (requests.RequestException, ValueError, TypeError) as e:
-        app.logger.warning('DDInter lookup failed for %s -> %s: %s', id_a, id_b, e)
-    return None
+        rows_a, _ = _query_ddinter_page(id_a, session, max_retries)
+        if rows_a is None:
+            return None, "service_unavailable"
+        for entry in rows_a:
+            if str(entry.get('drug_id')) == str(id_b):
+                return entry, "found"
+
+        rows_b, _ = _query_ddinter_page(id_b, session, max_retries)
+        if rows_b is None:
+            return None, "service_unavailable"
+        for entry in rows_b:
+            if str(entry.get('drug_id')) == str(id_a):
+                return entry, "found"
+
+        return None, "not_found"
+    finally:
+        session.close()
 
 
 def _ddinter_categories(entry: dict) -> list:
@@ -455,11 +518,16 @@ def interaction_summary():
                 'reason': f'No DDInter record found for {failed}. Summary unavailable for this pair.'
             }), 200
 
-        entry = fetch_ddinter_interaction(id_a, id_b)
-        if entry is None:
+        entry, status = fetch_ddinter_interaction(id_a, id_b)
+        if status == 'not_found':
             return jsonify({
                 'available': False,
                 'reason': "These two drugs were found in DDInter individually, but no direct interaction record exists between them in DDInter's database."
+            }), 200
+        if status == 'service_unavailable':
+            return jsonify({
+                'available': False,
+                'reason': "DDInter's interaction lookup service is temporarily unavailable or rate-limited. Please try again in a moment."
             }), 200
 
         try:

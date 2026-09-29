@@ -10,6 +10,12 @@
 ---
 
 ## 1. Project Overview
+C-FOOTPRINT is an end-to-end pipeline for two related molecular safety tasks, both built on Graph Neural Networks operating directly on chemical structure rather than hand-coded descriptors:
+
+Single-compound toxicity screening — predicts activity across the 12 canonical Tox21 bioassay endpoints from a SMILES string or a plain chemical name.
+Drug–drug interaction (DDI) severity prediction — given two drugs, predicts interaction severity (Minor / Moderate / Major) using a dual-encoder GNN trained on DDInter, with an optional plain-language mechanism summary generated locally via Ollama from DDInter's own reported interaction categories.
+
+Both are served through a single Flask dashboard with live inference, atom-level saliency visualization, and chemical-name resolution via PubChem
 
 This repository provides an end-to-end, self-contained implementation of **Graph Neural Networks (GNNs)** for predicting molecular property endpoints — specifically toxicity across the **12 canonical Tox21 bioassays** — directly from chemical structure without hand-coded chemistry rules.
 
