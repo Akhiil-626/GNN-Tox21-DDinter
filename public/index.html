@@ -129,7 +129,7 @@
             </section>
 
             <!-- Full Width DDI Severity Section -->
-            <section class="card ddi-card span-2">
+            <section class="card ddi-card span-2" id="interact">
                 <div class="card-header">
                     <h2><i class="fa-solid fa-pills"></i> Drug-Drug Interaction Severity</h2>
                     <span class="meta-tag">3-Class DDI Model</span>
@@ -160,9 +160,90 @@
                 </div>
 
                 <small id="ddi-status" class="ddi-status" role="status" aria-live="polite"></small>
-                <div id="ddi-result" class="ddi-result" hidden></div>
+                <div id="ddi-result" class="ddi-result" hidden>
+                    <div class="severity-row"></div>
+                    <div class="record-row" id="ddi-record" hidden>
+                        <span class="record-label">DDInter record</span>
+                        <span id="ddi-record-badge" class="severity-badge small"></span>
+                        <p id="ddi-record-text"></p>
+                        <p id="ddi-record-note" class="field-note"></p>
+                    </div>
+                </div>
                 <div id="ddi-summary" class="ddi-summary" hidden></div>
             </section>
+
+            <!-- Prescription Checker Section -->
+            <div class="card span-2 rx-panel" id="rx-panel">
+                <div class="rx-header">
+                    <div>
+                        <h2 class="rx-title"><i class="fa-solid fa-clipboard-list"></i> Prescription checker</h2>
+                        <p class="rx-subtitle">Add 2 to 5 drugs to inspect pairwise interactions, relation networks, and structural analogues.</p>
+                    </div>
+                    <div class="rx-arch-selector" role="group" aria-label="Prescription architecture selector">
+                        <button type="button" class="rx-arch-btn rx-arch-active" data-arch="gcn">GCN</button>
+                        <button type="button" class="rx-arch-btn" data-arch="gin">GIN</button>
+                    </div>
+                </div>
+
+                <div class="rx-input-section">
+                    <div class="rx-chips-container" id="rx-chips-container">
+                        <!-- Populated with picked drug chips -->
+                    </div>
+                    <div class="rx-autocomplete-wrapper">
+                        <input type="text" id="rx-input" class="rx-input" placeholder="Type drug name (min. 3 chars)" autocomplete="off">
+                        <ul id="rx-suggestions" class="rx-suggestions" role="listbox" hidden></ul>
+                    </div>
+                </div>
+
+                <div class="rx-actions">
+                    <button type="button" id="rx-btn-check" class="btn btn-primary">
+                        <i class="fa-solid fa-stethoscope"></i> Get interactions
+                    </button>
+                    <button type="button" id="rx-btn-clear" class="btn rx-btn-secondary">
+                        <i class="fa-solid fa-trash-can"></i> Clear
+                    </button>
+                    <div class="rx-examples-group">
+                        <span class="rx-examples-label">Examples:</span>
+                        <button type="button" class="rx-example-chip" id="rx-example-1">Regimen A (4 drugs)</button>
+                        <button type="button" class="rx-example-chip" id="rx-example-2">Regimen B (3 drugs)</button>
+                    </div>
+                </div>
+
+                <small id="rx-status" class="rx-status" role="status" aria-live="polite"></small>
+
+                <!-- Results Section -->
+                <div id="rx-results" class="rx-results" hidden>
+                    <div id="rx-warnings" class="rx-warnings" hidden></div>
+
+                    <div class="rx-visuals-grid">
+                        <div class="rx-chart-card">
+                            <div class="rx-card-header">
+                                <h4 class="rx-card-title"><i class="fa-solid fa-circle-nodes"></i> Interaction relation network</h4>
+                                <button type="button" id="rx-btn-download-chart" class="rx-btn-download">
+                                    <i class="fa-solid fa-download"></i> Download as image
+                                </button>
+                            </div>
+                            <div id="rx-relation-container" class="rx-relation-container"></div>
+                        </div>
+
+                        <div class="rx-chart-card">
+                            <div class="rx-card-header">
+                                <h4 class="rx-card-title"><i class="fa-solid fa-chart-column"></i> DDInter severity distribution per drug</h4>
+                            </div>
+                            <div id="rx-dist-container" class="rx-dist-container"></div>
+                        </div>
+                    </div>
+
+                    <div class="rx-pairs-section">
+                        <h4 class="rx-card-title"><i class="fa-solid fa-layer-group"></i> Pairwise interaction assessments</h4>
+                        <div id="rx-pairs-grid" class="rx-pairs-grid"></div>
+                    </div>
+
+                    <div class="rx-footer">
+                        <p>Source: <a href="https://ddinter.scbdd.com" target="_blank" rel="noopener">DDInter</a> (CC BY-NC-SA 4.0). For research and education only, not medical advice.</p>
+                    </div>
+                </div>
+            </div>
         </main>
 
         <!-- Footer -->

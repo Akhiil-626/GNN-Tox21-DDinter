@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import json
 import time
+from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 import requests
@@ -22,6 +23,15 @@ from src.ddi_model import DualEncoderDDI
 from src.model import get_model, MPNNModel
 from src.visualize import compute_atom_saliency, render_molecule_svg
 from src.train import train_gnn
+from src.ddinter_lookup import (
+    build_ddinter_index,
+    load_ddinter,
+    lookup_pair,
+    resolve_input,
+    distribution,
+    similar_drugs,
+    build_analogues,
+)
 
 app = Flask(__name__, static_folder='../public', static_url_path='')
 
@@ -47,16 +57,37 @@ def build_ddinter_name_index() -> dict:
     index = {}
     for code in ['A', 'B', 'D', 'H', 'L', 'P', 'R', 'V']:
         csv_path = os.path.join('data', 'raw', f'ddinter_downloads_code_{code}.csv')
-        frame = pd.read_csv(csv_path)
-        for _, row in frame[['Drug_A', 'DDInterID_A', 'Drug_B', 'DDInterID_B']].iterrows():
-            if pd.notna(row['Drug_A']) and pd.notna(row['DDInterID_A']):
-                index[str(row['Drug_A']).strip().lower()] = str(row['DDInterID_A']).strip()
-            if pd.notna(row['Drug_B']) and pd.notna(row['DDInterID_B']):
-                index[str(row['Drug_B']).strip().lower()] = str(row['DDInterID_B']).strip()
+        if not os.path.exists(csv_path):
+            continue
+        try:
+            frame = pd.read_csv(csv_path)
+            for d_a, id_a, d_b, id_b in zip(
+                frame['Drug_A'], frame['DDInterID_A'], frame['Drug_B'], frame['DDInterID_B']
+            ):
+                if pd.notna(d_a) and pd.notna(id_a):
+                    index[str(d_a).strip().lower()] = str(id_a).strip()
+                if pd.notna(d_b) and pd.notna(id_b):
+                    index[str(d_b).strip().lower()] = str(id_b).strip()
+        except Exception:
+            pass
     return index
 
 
 DDINTER_NAME_INDEX = build_ddinter_name_index()
+
+try:
+    DDINTER_DATA = load_ddinter()
+    if DDINTER_DATA is not None:
+        print(f"Indexed {len(DDINTER_DATA.pair_levels)} DDInter drug-drug interaction pairs.")
+        DDINTER_PAIR_INDEX = DDINTER_DATA
+    else:
+        print("Warning: DDInter dataset could not be loaded (missing files).")
+        DDINTER_DATA = None
+        DDINTER_PAIR_INDEX = None
+except Exception as e:
+    print(f"Warning: Failed to load DDInter dataset: {e}")
+    DDINTER_DATA = None
+    DDINTER_PAIR_INDEX = None
 
 
 def load_or_train_default_model(arch: str = 'gcn') -> torch.nn.Module:
@@ -239,8 +270,27 @@ def predict_interaction():
             predicted_class = int(torch.argmax(probabilities).item())
 
         labels = {0: 'Minor', 1: 'Moderate', 2: 'Major'}
+        predicted_severity = labels[predicted_class]
+
+        try:
+            record = lookup_pair(DDINTER_PAIR_INDEX, smiles_a, smiles_b)
+            agrees = (predicted_severity in record.get('all_levels', [])) if record.get('status') == 'match' else None
+            ddinter_record = {
+                'status': record.get('status', 'unavailable'),
+                'level': record.get('level'),
+                'all_levels': record.get('all_levels', []),
+                'agrees_with_prediction': agrees
+            }
+        except Exception:
+            ddinter_record = {
+                'status': 'unavailable',
+                'level': None,
+                'all_levels': [],
+                'agrees_with_prediction': None
+            }
+
         return jsonify({
-            'predicted_severity': labels[predicted_class],
+            'predicted_severity': predicted_severity,
             'probabilities': {
                 labels[idx]: float(probabilities[idx].cpu().item())
                 for idx in range(3)
@@ -249,7 +299,8 @@ def predict_interaction():
             'smiles_b': smiles_b,
             'name_a': name_a,
             'name_b': name_b,
-            'arch': arch.upper()
+            'arch': arch.upper(),
+            'ddinter_record': ddinter_record
         })
 
     except Exception as e:
@@ -558,6 +609,170 @@ def get_metrics():
         return jsonify(df.to_dict(orient='records'))
     else:
         return jsonify({'message': 'Metrics not evaluated yet. Run evaluate.py first.'})
+
+
+def predict_pair_severity(smiles_a: Optional[str], smiles_b: Optional[str], arch: str = 'gcn') -> Optional[Dict[str, Any]]:
+    """
+    Run DDI severity model inference for two SMILES strings without network lookups.
+    Returns predicted label and class probabilities, or None on any featurization/inference error.
+    """
+    if not smiles_a or not smiles_b:
+        return None
+    try:
+        graph_a = smiles_to_graph(smiles_a)
+        graph_b = smiles_to_graph(smiles_b)
+        if graph_a is None or graph_b is None:
+            return None
+
+        batch_a = Batch.from_data_list([graph_a])
+        batch_b = Batch.from_data_list([graph_b])
+        model = load_ddi_model(arch)
+        device = next(model.parameters()).device
+        batch_a = batch_a.to(device)
+        batch_b = batch_b.to(device)
+
+        with torch.no_grad():
+            logits = model(batch_a, batch_b)
+            probabilities = torch.softmax(logits, dim=-1)[0]
+            predicted_class = int(torch.argmax(probabilities).item())
+
+        labels = {0: 'Minor', 1: 'Moderate', 2: 'Major'}
+        return {
+            'label': labels[predicted_class],
+            'probabilities': {
+                labels[idx]: float(probabilities[idx].cpu().item())
+                for idx in range(3)
+            }
+        }
+    except Exception:
+        return None
+
+
+@app.route('/api/ddinter/suggest', methods=['GET'])
+def suggest_drugs():
+    """
+    Autocomplete drug names from DDInter dataset.
+    Requires at least 3 characters; returns up to 8 matches prioritizing prefix matches.
+    """
+    q = request.args.get('q', '').strip()
+    if len(q) < 3 or DDINTER_DATA is None:
+        return jsonify({'suggestions': []})
+
+    q_lower = q.lower()
+    prefix_matches = []
+    substring_matches = []
+
+    for d_id, d_name in DDINTER_DATA.id_to_name.items():
+        name_lower = d_name.lower()
+        if name_lower.startswith(q_lower):
+            prefix_matches.append({'name': d_name, 'id': d_id})
+        elif q_lower in name_lower:
+            substring_matches.append({'name': d_name, 'id': d_id})
+
+    prefix_matches.sort(key=lambda x: (len(x['name']), x['name']))
+    substring_matches.sort(key=lambda x: (len(x['name']), x['name']))
+
+    combined = prefix_matches + substring_matches
+    seen = set()
+    suggestions = []
+    for item in combined:
+        if item['id'] not in seen:
+            seen.add(item['id'])
+            suggestions.append(item)
+            if len(suggestions) >= 8:
+                break
+
+    return jsonify({'suggestions': suggestions})
+
+
+@app.route('/api/check-prescription', methods=['POST'])
+def check_prescription():
+    """
+    Evaluate multi-drug prescriptions (2 to 5 drugs) against DDInter records and GNN models.
+    Returns per-drug resolutions, pairwise interactions, and structural analogues.
+    """
+    data = request.get_json() or {}
+    names = data.get('names')
+    arch = data.get('arch', 'gcn').lower()
+
+    if not isinstance(names, list) or len(names) < 2 or len(names) > 5:
+        return jsonify({'error': 'Prescription check requires between 2 and 5 drug names.'}), 400
+
+    for idx, raw_n in enumerate(names):
+        if not isinstance(raw_n, str) or not raw_n.strip():
+            return jsonify({'error': f'Drug name at position {idx + 1} cannot be empty.'}), 400
+
+    resolved_drugs = []
+    warnings_list = []
+    seen_ids = set()
+    seen_smiles = set()
+
+    # Sequential resolution loop (never hits PubChem in parallel)
+    for raw_n in names:
+        drug_res = resolve_input(DDINTER_DATA, raw_n, resolver=name_to_smiles)
+        d_id = drug_res.get('ddinter_id')
+        d_smiles = drug_res.get('smiles')
+
+        if d_id:
+            if d_id in seen_ids:
+                return jsonify({
+                    'error': f'Duplicate drug detected: "{raw_n}" resolves to the same DDInter drug ({d_id}) as another input.'
+                }), 400
+            seen_ids.add(d_id)
+
+        if d_smiles:
+            if d_smiles in seen_smiles:
+                return jsonify({
+                    'error': f'Duplicate chemical structure detected: "{raw_n}" resolves to the same molecule as another input.'
+                }), 400
+            seen_smiles.add(d_smiles)
+
+        dist = distribution(DDINTER_DATA, d_id)
+        drug_res['distribution'] = dist
+        resolved_drugs.append(drug_res)
+
+        if drug_res['resolved_via'] == 'unresolved':
+            warnings_list.append(f"Could not resolve '{raw_n}' via DDInter or PubChem.")
+        elif drug_res['resolved_via'] == 'pubchem_only':
+            warnings_list.append(f"'{raw_n}' was resolved via PubChem, but is not documented in DDInter.")
+
+    pairs_list = []
+    n_drugs = len(resolved_drugs)
+    for i in range(n_drugs):
+        for j in range(i + 1, n_drugs):
+            drug_a = resolved_drugs[i]
+            drug_b = resolved_drugs[j]
+
+            id_a = drug_a.get('ddinter_id')
+            id_b = drug_b.get('ddinter_id')
+            smiles_a = drug_a.get('smiles')
+            smiles_b = drug_b.get('smiles')
+
+            record = lookup_pair(DDINTER_DATA, id_a, id_b)
+            model_res = predict_pair_severity(smiles_a, smiles_b, arch=arch)
+
+            analogues_obj = None
+            if record.get('status') == 'not_recorded':
+                analogues_obj = build_analogues(DDINTER_DATA, id_a, id_b)
+
+            details_url = None
+            if record.get('status') in ('match', 'unknown_severity') and id_a:
+                details_url = f"https://ddinter.scbdd.com/ddinter/drug-detail/{id_a}/"
+
+            pairs_list.append({
+                'a': i,
+                'b': j,
+                'record': record,
+                'model': model_res,
+                'analogues': analogues_obj,
+                'details_url': details_url,
+            })
+
+    return jsonify({
+        'drugs': resolved_drugs,
+        'pairs': pairs_list,
+        'warnings': warnings_list,
+    }), 200
 
 
 if __name__ == '__main__':

@@ -5,10 +5,16 @@ __pycache__/
 
 # PyTorch & Dataset Caches
 data/processed/
-data/raw/*.gz
-data/raw/*.csv
-data/raw/ddinter_smiles_cache.json
+data/raw/
 models/*.pt
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
 
 # Python virtual environments
 venv/
