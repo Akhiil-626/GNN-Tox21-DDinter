@@ -1,0 +1,184 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: #060A18;
+    --foreground: #EAF0FF;
+    --card: #0C1330;
+    --card-foreground: #EAF0FF;
+    --popover: #0C1330;
+    --popover-foreground: #EAF0FF;
+    --primary: #19D3FF;
+    --primary-foreground: #060A18;
+    --secondary: #121A3D;
+    --secondary-foreground: #EAF0FF;
+    --muted: #121A3D;
+    --muted-foreground: #93A1C8;
+    --accent: #7A5CFF;
+    --accent-foreground: #FFFFFF;
+    --destructive: #FF5C7A;
+    --destructive-foreground: #FFFFFF;
+    --border: rgba(255, 255, 255, 0.08);
+    --input: rgba(255, 255, 255, 0.12);
+    --ring: #19D3FF;
+    --radius: 0.75rem;
+
+    --minor: #35E0A1;
+    --moderate: #FFB84D;
+    --major: #FF5C7A;
+  }
+
+  * {
+    border-color: var(--border);
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-family: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--foreground);
+    background-color: var(--background);
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    max-width: 100%;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Geist Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Bricolage Grotesque Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.03em;
+  }
+
+  code, kbd, samp, pre, .font-mono {
+    font-family: 'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace;
+    font-feature-settings: "tnum" 1;
+  }
+}
+
+@theme {
+  --font-sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Geist Mono Variable', monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-cyan: #19D3FF;
+  --color-violet: #7A5CFF;
+  --color-mint: #35E0A1;
+  --color-amber: #FFB84D;
+  --color-coral: #FF5C7A;
+  --color-minor: #35E0A1;
+  --color-moderate: #FFB84D;
+  --color-major: #FF5C7A;
+
+  --color-inverted: #F6F7FB;
+  --color-inverted-foreground: #0B1030;
+  --color-inverted-muted: #536284;
+}
+
+/* Custom marquee animations */
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 35s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Floating animation */
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes float-reverse {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(8px); }
+}
+
+.animate-float-1 {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: float-reverse 7s ease-in-out infinite;
+}
+
+.animate-float-3 {
+  animation: float-slow 5s ease-in-out infinite;
+}
+
+/* Glassmorphism helpers */
+.glass-pill {
+  background: rgba(12, 19, 48, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(12, 19, 48, 0.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card-hover {
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.glass-card-hover:hover {
+  transform: translateY(-4px);
+  border-color: rgba(25, 211, 255, 0.3);
+  box-shadow: 0 12px 30px -10px rgba(25, 211, 255, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee, .animate-float-1, .animate-float-2, .animate-float-3 {
+    animation: none;
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
