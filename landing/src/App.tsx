@@ -1,72 +1,47 @@
 import { useState, useEffect } from "react";
-import Lenis from "lenis";
-import { Navbar } from "./sections/Navbar";
-import { Hero } from "./sections/Hero";
-import { Statement } from "./sections/Statement";
-import { Stats } from "./sections/Stats";
-import { Modules } from "./sections/Modules";
-import { BuiltWith } from "./sections/BuiltWith";
-import { Endpoints } from "./sections/Endpoints";
-import { PullQuote } from "./sections/PullQuote";
-import { Walkthrough } from "./sections/Walkthrough";
-import { Performance } from "./sections/Performance";
-import { Features } from "./sections/Features";
-import { Trust } from "./sections/Trust";
-import { Faq } from "./sections/Faq";
-import { ClosingCta } from "./sections/ClosingCta";
-import { Footer } from "./sections/Footer";
+import { AtomCursor } from "./components/AtomCursor";
+import { Navbar } from "./sections/01-nav";
+import { HeroSection } from "./sections/02-hero";
+import { ProofBandSection } from "./sections/03-proof-band";
+import { ModulesStageSection } from "./sections/04-modules-stage";
+import { PipelineSection } from "./sections/05-pipeline";
+import { PerformanceSection } from "./sections/06-performance";
+import { HonestySection } from "./sections/07-honesty";
+import { FaqSection } from "./sections/08-faq";
+import { CtaBandSection } from "./sections/09-cta-band";
+import { FooterSection } from "./sections/10-footer";
 
 export default function App() {
-  const [selectedModuleTab, setSelectedModuleTab] = useState<string>("screening");
-
-  // Lenis smooth scrolling orchestration
-  useEffect(() => {
-    const isReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (isReduced) return;
-
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-    });
-
-    let rafId: number;
-    function raf(time: number) {
-      lenis.raf(time);
-      rafId = requestAnimationFrame(raf);
-    }
-    rafId = requestAnimationFrame(raf);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      lenis.destroy();
-    };
-  }, []);
+  const [activeSection, setActiveSection] = useState<string>("");
+  const [activeStep, setActiveStep] = useState<string>("screening");
 
   // Hash anchor navigation handling
   useEffect(() => {
     const handleHash = () => {
-      const hash = window.location.hash.replace("#", "");
-      if (!hash) return;
+      const rawHash = window.location.hash.replace("#", "");
+      if (!rawHash) return;
 
-      if (["screening", "interactions", "prescription", "performance"].includes(hash)) {
-        setSelectedModuleTab(hash);
-      }
-
-      const targetId =
-        hash === "screening" || hash === "interactions" || hash === "prescription"
-          ? "modules"
-          : hash;
-
-      const el = document.getElementById(targetId);
-      if (el) {
-        const navOffset = 90;
-        const pos = el.getBoundingClientRect().top + window.scrollY - navOffset;
-        window.scrollTo({ top: pos, behavior: "smooth" });
+      if (["screening", "interactions", "prescription"].includes(rawHash)) {
+        setActiveStep(rawHash);
+        setActiveSection(rawHash);
+        const el = document.getElementById(`module-${rawHash}`);
+        if (el) {
+          const navOffset = 64;
+          const pos = el.getBoundingClientRect().top + window.scrollY - navOffset;
+          window.scrollTo({ top: pos, behavior: "smooth" });
+        }
+      } else if (rawHash === "performance" || rawHash === "faq") {
+        setActiveSection(rawHash);
+        const el = document.getElementById(rawHash);
+        if (el) {
+          const navOffset = 64;
+          const pos = el.getBoundingClientRect().top + window.scrollY - navOffset;
+          window.scrollTo({ top: pos, behavior: "smooth" });
+        }
       }
     };
 
-    const timer = setTimeout(handleHash, 150);
+    const timer = setTimeout(handleHash, 100);
     window.addEventListener("hashchange", handleHash);
     return () => {
       clearTimeout(timer);
@@ -74,57 +49,87 @@ export default function App() {
     };
   }, []);
 
+  // IntersectionObserver scroll-spy to update nav aria-current
+  useEffect(() => {
+    const sectionIds = [
+      "module-screening",
+      "module-interactions",
+      "module-prescription",
+      "performance",
+      "faq",
+    ];
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const id = entry.target.id;
+            if (id.startsWith("module-")) {
+              const stepKey = id.replace("module-", "");
+              setActiveSection(stepKey);
+              setActiveStep(stepKey);
+            } else {
+              setActiveSection(id);
+            }
+          }
+        });
+      },
+      {
+        rootMargin: "-20% 0px -60% 0px",
+        threshold: 0,
+      }
+    );
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="min-h-screen bg-[#060A18] text-[#EAF0FF] antialiased selection:bg-cyan/20 selection:text-white">
-      {/* 1. Navbar */}
-      <Navbar onSelectModuleTab={setSelectedModuleTab} />
+    <div className="min-h-screen bg-[#F2F4F7] text-[#0E1116] antialiased selection:bg-[#D2FF3F] selection:text-[#0E1116]">
+      {/* Creative Atom Cursor */}
+      <AtomCursor />
+
+      {/* 1. Nav */}
+      <Navbar
+        activeSection={activeSection}
+        onNavigateToStep={(stepKey) => {
+          setActiveStep(stepKey);
+          setActiveSection(stepKey);
+        }}
+      />
 
       <main>
         {/* 2. Hero */}
-        <Hero />
+        <HeroSection />
 
-        {/* 3. Statement */}
-        <Statement />
+        {/* 3. Proof Band */}
+        <ProofBandSection />
 
-        {/* 4. Stats */}
-        <Stats />
+        {/* 4. Modules as Scroll-Driven Stage */}
+        <ModulesStageSection activeStep={activeStep} />
 
-        {/* 5. Modules (#modules) */}
-        <Modules
-          currentTab={selectedModuleTab}
-          onTabChange={setSelectedModuleTab}
-        />
+        {/* 5. Pipeline */}
+        <PipelineSection />
 
-        {/* 6. Built With (Marquee "Built on open science") */}
-        <BuiltWith />
+        {/* 6. Performance */}
+        <PerformanceSection />
 
-        {/* 7. Endpoints (#endpoints) */}
-        <Endpoints />
+        {/* 7. Honesty Section */}
+        <HonestySection />
 
-        {/* 8. Pull Quote */}
-        <PullQuote />
+        {/* 8. FAQ */}
+        <FaqSection />
 
-        {/* 9. Walkthrough */}
-        <Walkthrough />
-
-        {/* 10. Performance (#performance) */}
-        <Performance />
-
-        {/* 11. Features */}
-        <Features />
-
-        {/* 12. Trust */}
-        <Trust />
-
-        {/* 13. FAQ (#faq) */}
-        <Faq />
-
-        {/* 14. Closing CTA */}
-        <ClosingCta />
+        {/* 9. CTA Band */}
+        <CtaBandSection />
       </main>
 
-      {/* 15. Footer */}
-      <Footer />
+      {/* 10. Footer */}
+      <FooterSection />
     </div>
   );
 }

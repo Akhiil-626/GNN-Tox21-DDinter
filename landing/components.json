@@ -17,6 +17,7 @@
     "hooks": "@/hooks"
   },
   "registries": {
-    "@componentry": "https://componentry.fun/r/{name}.json"
+    "@componentry": "https://componentry.fun/r/{name}.json",
+    "@bklit": "https://ui.bklit.com/r/{name}.json"
   }
 }

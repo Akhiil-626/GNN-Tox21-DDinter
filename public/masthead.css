@@ -1,0 +1,130 @@
+/* ==========================================================================
+   C-FOOTPRINT Masthead Styles (public/masthead.css)
+   Scoped exclusively to the top bar (.masthead, .app-header).
+   No styles or variables leak into the rest of the page.
+   ========================================================================== */
+
+.masthead,
+.app-header {
+    --mh-ink: #0E1116;
+    --mh-paper: #F2F4F7;
+    --mh-blue: #2147FF;
+    --mh-lime: #D2FF3F;
+    --mh-font: 'Schibsted Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mh-mono: 'IBM Plex Mono', Consolas, monospace;
+    --mh-radius: 6px;
+
+    background: var(--mh-ink) !important;
+    border: 1px solid var(--mh-ink) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    color: var(--mh-paper) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.masthead .header-content,
+.app-header .header-content {
+    position: relative;
+    z-index: 2;
+}
+
+.masthead .logo-area h1,
+.app-header .logo-area h1 {
+    font-family: var(--mh-font) !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em !important;
+    color: var(--mh-paper) !important;
+}
+
+.masthead .logo-area h1 a.brand-link,
+.app-header .logo-area h1 a.brand-link {
+    color: var(--mh-paper) !important;
+    text-decoration: none;
+}
+
+.masthead .logo-area .subtitle,
+.app-header .logo-area .subtitle {
+    color: rgba(242, 244, 247, 0.75) !important;
+    font-family: var(--mh-mono) !important;
+}
+
+.masthead .logo-icon,
+.app-header .logo-icon {
+    background: var(--mh-lime) !important;
+    color: var(--mh-ink) !important;
+    border: 1px solid var(--mh-ink) !important;
+    border-radius: var(--mh-radius) !important;
+    box-shadow: none !important;
+}
+
+.masthead .brand-link,
+.app-header .brand-link {
+    color: inherit;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.masthead .brand-link:hover,
+.app-header .brand-link:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--mh-lime);
+    text-underline-offset: 4px;
+}
+
+.masthead .brand-link:focus-visible,
+.app-header .brand-link:focus-visible {
+    outline: 2px solid var(--mh-lime);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+.masthead .header-badges .badge,
+.app-header .header-badges .badge {
+    background: var(--mh-lime) !important;
+    color: var(--mh-ink) !important;
+    border: 1px solid var(--mh-ink) !important;
+    border-radius: var(--mh-radius) !important;
+    font-family: var(--mh-mono) !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+}
+
+.masthead .header-badges .badge i,
+.app-header .header-badges .badge i {
+    color: var(--mh-ink) !important;
+}
+
+/* Masthead decorative background: blue plane (-4deg) and lime arc set */
+.masthead::before,
+.app-header::before {
+    content: '';
+    position: absolute;
+    top: -24px;
+    right: 32px;
+    width: 140px;
+    height: 90px;
+    background: var(--mh-blue);
+    transform: rotate(-4deg);
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.9;
+}
+
+.masthead::after,
+.app-header::after {
+    content: '';
+    position: absolute;
+    top: -70px;
+    right: 110px;
+    width: 190px;
+    height: 190px;
+    border: 2px solid var(--mh-lime);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.85;
+}

@@ -1,31 +1,36 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 @layer base {
   :root {
-    --background: #060A18;
-    --foreground: #EAF0FF;
-    --card: #0C1330;
-    --card-foreground: #EAF0FF;
-    --popover: #0C1330;
-    --popover-foreground: #EAF0FF;
-    --primary: #19D3FF;
-    --primary-foreground: #060A18;
-    --secondary: #121A3D;
-    --secondary-foreground: #EAF0FF;
-    --muted: #121A3D;
-    --muted-foreground: #93A1C8;
-    --accent: #7A5CFF;
-    --accent-foreground: #FFFFFF;
-    --destructive: #FF5C7A;
-    --destructive-foreground: #FFFFFF;
-    --border: rgba(255, 255, 255, 0.08);
-    --input: rgba(255, 255, 255, 0.12);
-    --ring: #19D3FF;
-    --radius: 0.75rem;
+    --ink: #0E1116;
+    --paper: #F2F4F7;
+    --signal-blue: #2147FF;
+    --acid-lime: #D2FF3F;
 
-    --minor: #35E0A1;
-    --moderate: #FFB84D;
-    --major: #FF5C7A;
+    --minor: #19B37A;
+    --moderate: #F2A900;
+    --major: #E5484D;
+
+    --border: #0E1116;
+    --radius-btn: 6px;
+    --radius-panel: 12px;
+
+    /* Semantic mapping */
+    --background: var(--paper);
+    --foreground: var(--ink);
+    --card: #FFFFFF;
+    --card-foreground: var(--ink);
+    --primary: var(--ink);
+    --primary-foreground: var(--paper);
+    --secondary: #E3E7ED;
+    --secondary-foreground: var(--ink);
+    --muted: #E3E7ED;
+    --muted-foreground: #4D5666;
+    --accent: var(--acid-lime);
+    --accent-foreground: var(--ink);
+    --ring: var(--signal-blue);
   }
 
   * {
@@ -35,7 +40,7 @@
 
   html {
     scroll-behavior: smooth;
-    font-family: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Schibsted Grotesk Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     color: var(--foreground);
     background-color: var(--background);
     overflow-x: hidden;
@@ -50,38 +55,66 @@
     max-width: 100%;
     background-color: var(--background);
     color: var(--foreground);
-    font-family: 'Geist Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Schibsted Grotesk Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    font-size: 17.5px;
+    line-height: 1.6;
   }
 
   #root {
     overflow-x: hidden;
     max-width: 100%;
+    min-height: 100vh;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Bricolage Grotesque Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Schibsted Grotesk Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--ink);
+    font-weight: 800;
+  }
+
+  h1 {
+    font-size: clamp(44px, 7vw, 104px);
     letter-spacing: -0.03em;
+    line-height: 0.95;
+  }
+
+  h2 {
+    font-size: clamp(32px, 4.5vw, 64px);
+    letter-spacing: -0.03em;
+    line-height: 1.05;
   }
 
   code, kbd, samp, pre, .font-mono {
-    font-family: 'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace;
+    font-family: 'IBM Plex Mono', monospace;
     font-feature-settings: "tnum" 1;
+  }
+
+  /* Accessible focus ring */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--signal-blue);
+    outline-offset: 2px;
   }
 }
 
 @theme {
-  --font-sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-display: 'Bricolage Grotesque Variable', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'Geist Mono Variable', monospace;
+  --font-sans: 'Schibsted Grotesk Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Schibsted Grotesk Variable', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  --color-ink: #0E1116;
+  --color-paper: #F2F4F7;
+  --color-signal-blue: #2147FF;
+  --color-acid-lime: #D2FF3F;
+  --color-minor: #19B37A;
+  --color-moderate: #F2A900;
+  --color-major: #E5484D;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -90,95 +123,242 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
-  --color-input: var(--input);
   --color-ring: var(--ring);
 
-  --color-cyan: #19D3FF;
-  --color-violet: #7A5CFF;
-  --color-mint: #35E0A1;
-  --color-amber: #FFB84D;
-  --color-coral: #FF5C7A;
-  --color-minor: #35E0A1;
-  --color-moderate: #FFB84D;
-  --color-major: #FF5C7A;
-
-  --color-inverted: #F6F7FB;
-  --color-inverted-foreground: #0B1030;
-  --color-inverted-muted: #536284;
+  --radius-btn: 6px;
+  --radius-panel: 12px;
 }
 
-/* Custom marquee animations */
-@keyframes marquee {
-  0% { transform: translateX(0%); }
-  100% { transform: translateX(-50%); }
-}
-
-.animate-marquee {
-  animation: marquee 35s linear infinite;
-}
-
-.animate-marquee:hover {
-  animation-play-state: paused;
-}
-
-/* Floating animation */
-@keyframes float-slow {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-}
-
-@keyframes float-reverse {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(8px); }
-}
-
-.animate-float-1 {
-  animation: float-slow 6s ease-in-out infinite;
-}
-
-.animate-float-2 {
-  animation: float-reverse 7s ease-in-out infinite;
-}
-
-.animate-float-3 {
-  animation: float-slow 5s ease-in-out infinite;
-}
-
-/* Glassmorphism helpers */
-.glass-pill {
-  background: rgba(12, 19, 48, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-card {
-  background: rgba(12, 19, 48, 0.65);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-card-hover {
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s ease, box-shadow 0.25s ease;
-}
-
-.glass-card-hover:hover {
-  transform: translateY(-4px);
-  border-color: rgba(25, 211, 255, 0.3);
-  box-shadow: 0 12px 30px -10px rgba(25, 211, 255, 0.15);
-}
-
+/* Reduced motion overrides */
 @media (prefers-reduced-motion: reduce) {
-  .animate-marquee, .animate-float-1, .animate-float-2, .animate-float-3 {
-    animation: none;
-  }
-  * {
-    animation-duration: 0.01ms !important;
+  *, ::before, ::after {
+    animation-delay: -1ms !important;
+    animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    background-attachment: initial !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
   }
+}
+
+@theme inline {
+  --color-chart-line-primary: var(--chart-line-primary);
+  --color-chart-line-secondary: var(--chart-line-secondary);
+  --color-chart-brush-border: var(--chart-brush-border);
+  --color-chart-tooltip-background: var(--chart-tooltip-background);
+  --color-chart-tooltip-foreground: var(--chart-tooltip-foreground);
+  --color-chart-tooltip-muted: var(--chart-tooltip-muted);
+  --color-chart-scale-02: var(--chart-scale-02);
+  --color-chart-scale-03: var(--chart-scale-03);
+  --color-chart-scale-04: var(--chart-scale-04);
+  --color-chart-scale-05: var(--chart-scale-05);
+  --color-chart-segment-line: var(--chart-segment-line);
+  --color-chart-segment-background: var(--chart-segment-background);
+  --color-chart-marker-badge-foreground: var(--chart-marker-badge-foreground);
+  --color-chart-marker-badge-background: var(--chart-marker-badge-background);
+  --color-chart-indicator-secondary-color: var(--chart-indicator-secondary-color);
+  --color-chart-indicator-color: var(--chart-indicator-color);
+  --color-chart-scale-pattern-color: var(--chart-scale-pattern-color);
+  --chart-scale-05: var(--chart-scale-05);
+  --chart-scale-04: var(--chart-scale-04);
+  --chart-scale-03: var(--chart-scale-03);
+  --chart-scale-02: var(--chart-scale-02);
+  --color-chart-scale-01: var(--chart-scale-01);
+  --color-chart-scale-mix: var(--chart-scale-mix);
+  --color-chart-label: var(--chart-label);
+  --color-chart-marker-foreground: var(--chart-marker-foreground);
+  --color-chart-marker-border: var(--chart-marker-border);
+  --color-chart-marker-background: var(--chart-marker-background);
+  --chart-tooltip-muted: var(--chart-tooltip-muted);
+  --chart-tooltip-foreground: var(--chart-tooltip-foreground);
+  --chart-tooltip-background: var(--chart-tooltip-background);
+  --chart-brush-border: var(--chart-brush-border);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-crosshair: var(--chart-crosshair);
+  --chart-line-secondary: var(--chart-line-secondary);
+  --chart-line-primary: var(--chart-line-primary);
+  --color-chart-foreground-muted: var(--chart-foreground-muted);
+  --color-chart-foreground: var(--chart-foreground);
+  --color-chart-background: var(--chart-background);
+  --color-chart-negative: var(--chart-negative);
+  --color-chart-positive: var(--chart-positive);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+}
+
+:root {
+  --chart-1: #2147FF;
+  --chart-2: #D2FF3F;
+  --chart-3: #0E1116;
+  --chart-4: #4A5260;
+  --chart-5: #19B37A;
+  --chart-positive: #19B37A;
+  --chart-negative: #E5484D;
+  --chart-background: #FFFFFF;
+  --chart-foreground: #0E1116;
+  --chart-foreground-muted: #4A5260;
+  --chart-line-primary: #2147FF;
+  --chart-line-secondary: #0E1116;
+  --chart-crosshair: #2147FF;
+  --chart-grid: rgba(14, 17, 22, 0.12);
+  --chart-brush-border: rgba(14, 17, 22, 0.2);
+  --chart-tooltip-background: #0E1116;
+  --chart-tooltip-foreground: #F2F4F7;
+  --chart-tooltip-muted: rgba(242, 244, 247, 0.7);
+  --chart-marker-background: #F2F4F7;
+  --chart-marker-border: #0E1116;
+  --chart-marker-foreground: #0E1116;
+  --chart-label: #0E1116;
+  --chart-scale-mix: #FFFFFF;
+  --chart-scale-01: #E5E7EB;
+  --chart-scale-02: #93C5FD;
+  --chart-scale-03: #60A5FA;
+  --chart-scale-04: #3B82F6;
+  --chart-scale-05: #2147FF;
+  --chart-scale-pattern-color: #FFFFFF;
+  --chart-indicator-color: #0E1116;
+  --chart-indicator-secondary-color: #F2F4F7;
+  --chart-marker-badge-background: #0E1116;
+  --chart-marker-badge-foreground: #D2FF3F;
+  --chart-segment-background: rgba(14, 17, 22, 0.05);
+  --chart-segment-line: rgba(14, 17, 22, 0.2);
+}
+
+.dark {
+  --chart-1: oklch(0.585 0.233 277.117);
+  --chart-2: oklch(0.852 0.199 91.936);
+  --chart-3: oklch(0.667 0.295 322.15);
+  --chart-4: oklch(0.56 0.021 213.5);
+  --chart-5: oklch(1 0 0);
+  --chart-positive: oklch(0.765 0.177 163.223);
+  --chart-negative: oklch(0.704 0.191 22.216);
+  --chart-background: oklch(0.145 0 0);
+  --chart-foreground: oklch(0.45 0 0);
+  --chart-foreground-muted: oklch(0.65 0.01 260);
+  --chart-crosshair: oklch(0.45 0 0);
+  --chart-grid: oklch(0.25 0 0);
+  --chart-brush-border: var(--chart-grid);
+  --chart-marker-background: oklch(0.25 0.01 260);
+  --chart-marker-border: oklch(0.4 0.01 260);
+  --chart-marker-foreground: oklch(0.9 0 0);
+  --chart-label: oklch(0.75 0.01 260);
+  --chart-scale-mix: oklch(0.25 0 0);
+  --chart-scale-01: oklch(0.3 0 0);
+  --chart-scale-02: color-mix(in oklab, var(--chart-1) 35%, var(--chart-scale-mix));
+  --chart-scale-03: color-mix(in oklab, var(--chart-1) 55%, var(--chart-scale-mix));
+  --chart-scale-04: color-mix(in oklab, var(--chart-1) 78%, var(--chart-scale-mix));
+  --chart-scale-05: var(--chart-1);
+  --chart-scale-pattern-color: oklch(0.145 0 0);
+  --chart-indicator-color: oklch(1 0 0);
+  --chart-indicator-secondary-color: oklch(0.145 0 0);
+  --chart-marker-badge-background: oklch(1 0 0);
+  --chart-marker-badge-foreground: oklch(0.15 0 0);
+  --chart-segment-background: oklch(0.41 0.0127 248.14 / 0.25);
+  --chart-segment-line: oklch(1 0 0 / 0.25);
+}
+
+/* Creative Atom Cursor */
+.cf-cursor-hidden,
+.cf-cursor-hidden * {
+  cursor: none !important;
+}
+
+.cf-cursor-hidden input,
+.cf-cursor-hidden textarea,
+.cf-cursor-hidden select {
+  cursor: auto !important;
+}
+
+#cf-atom-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 999999;
+  will-change: transform, opacity;
+}
+
+.cf-cursor-nucleus {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  background-color: #D2FF3F;
+  border: 2px solid #0E1116;
+  border-radius: 50%;
+  transform: translate(0, 0);
+  transition: width 0.15s ease, height 0.15s ease, top 0.15s ease, left 0.15s ease;
+}
+
+.cf-cursor-ring {
+  position: absolute;
+  top: -14px;
+  left: -14px;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid #0E1116;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #D2FF3F;
+  background-color: transparent;
+  transition: width 0.15s ease, height 0.15s ease, top 0.15s ease, left 0.15s ease, background-color 0.15s ease, transform 0.12s ease;
+}
+
+.cf-cursor-electron {
+  position: absolute;
+  top: -2.5px;
+  left: -2.5px;
+  width: 5px;
+  height: 5px;
+  background-color: #2147FF;
+  border-radius: 50%;
+}
+
+.cf-cursor-arc {
+  position: absolute;
+  top: -22px;
+  left: -22px;
+  width: 44px;
+  height: 44px;
+  border: 2px solid #2147FF;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: cf-arc-expand 0.4s ease-out forwards;
+}
+
+@keyframes cf-arc-expand {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.cf-cursor-hover .cf-cursor-nucleus {
+  width: 4px;
+  height: 4px;
+  top: -2px;
+  left: -2px;
+}
+
+.cf-cursor-hover .cf-cursor-ring {
+  width: 44px;
+  height: 44px;
+  top: -22px;
+  left: -22px;
+  background-color: #D2FF3F;
+  border: 1.5px solid #0E1116;
+  box-shadow: none;
+}
+
+.cf-cursor-pressed .cf-cursor-ring {
+  transform: scale(0.8);
 }
