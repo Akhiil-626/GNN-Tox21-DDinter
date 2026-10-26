@@ -85,11 +85,13 @@ def train_evaluate_rf_baseline(dataset: Tox21GraphDataset) -> Dict[str, Any]:
             auc = roc_auc_score(y_te_valid, probs)
             per_task_auc[task_name] = auc
             valid_aucs.append(auc)
+            print(f"  [{i+1:02d}/{len(dataset.tasks):02d}] {task_name:<16} | Fitted RF ({len(y_tr_valid)} train) -> Test ROC-AUC: {auc:.4f}", flush=True)
         else:
             per_task_auc[task_name] = np.nan
+            print(f"  [{i+1:02d}/{len(dataset.tasks):02d}] {task_name:<16} | Skipped (insufficient class variation)", flush=True)
             
     mean_auc = np.nanmean(valid_aucs)
-    print(f"Random Forest + Morgan FP Test Mean ROC-AUC: {mean_auc:.4f}")
+    print(f"Random Forest + Morgan FP Test Mean ROC-AUC: {mean_auc:.4f}", flush=True)
     return {'per_task': per_task_auc, 'mean_auc': mean_auc, 'y_probs_test': y_probs_mat, 'y_true_test': y_test_mat}
 
 
@@ -157,12 +159,12 @@ def generate_plots(y_true: np.ndarray, y_probs_dict: Dict[str, np.ndarray], outp
             
         fpr, tpr, _ = roc_curve(y_t_flat, y_p_flat)
         auc_val = roc_auc_score(y_t_flat, y_p_flat)
-        plt.plot(fpr, tpr, lw=2.5, label=f"{model_name} (Macro ROC-AUC = {auc_val:.3f})")
+        plt.plot(fpr, tpr, lw=2.5, label=f"{model_name} (pooled ROC-AUC = {auc_val:.3f})")
         
     plt.plot([0, 1], [0, 1], 'k--', lw=1.5, label='Random Chance (AUC = 0.500)')
     plt.xlabel('False Positive Rate (1 - Specificity)', fontsize=12)
     plt.ylabel('True Positive Rate (Sensitivity)', fontsize=12)
-    plt.title('Tox21 Benchmark ROC Curves (Scaffold Split)', fontsize=14, fontweight='bold')
+    plt.title('Tox21 ROC Curves (Scaffold Split, all 12 tasks pooled)', fontsize=14, fontweight='bold')
     plt.legend(loc='lower right', fontsize=11)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'roc_curves.png'), dpi=300)
@@ -185,13 +187,14 @@ def run_full_evaluation(models_dict: Dict[str, Any], dataset: Tox21GraphDataset,
     y_probs_dict = {}
     y_true_test = None
     
-    for name, model in models_dict.items():
+    for idx, (name, model) in enumerate(models_dict.items()):
+        print(f"  Evaluating Model [{idx+1}/{len(models_dict)}]: {name} on {len(test_graphs)} test compounds...", flush=True)
         if isinstance(model, dict) and 'y_probs_test' in model:
             # Pre-evaluated model result dictionary
             y_probs = model['y_probs_test']
             y_true_test = model['y_true_test']
         else:
-            _, _, y_true_test, y_probs = evaluate_model(model, test_loader, device)
+            _, _, y_true_test, y_probs = evaluate_model(model, test_loader, device, desc=f"Eval {name}")
             
         y_probs_dict[name] = y_probs
         df_m = compute_detailed_metrics(y_true_test, y_probs)

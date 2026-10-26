@@ -204,6 +204,8 @@ async function runInteractionCheck() {
         }
 
         renderSeverity(data);
+        renderDecisionNote(data.decision);
+        renderRiskPanel(data.risk_overlap);
         renderRecord(data.ddinter_record);
         result.hidden = false;
         loadInteractionSummary(nameA, nameB);
@@ -247,6 +249,104 @@ function renderSeverity(data) {
             <div><span>${data.name_a}</span><code>${data.smiles_a}</code></div>
             <div><span>${data.name_b}</span><code>${data.smiles_b}</code></div>
         </div>`;
+}
+
+// ---- Order-independent model: abstain note + "Why is this pair risky?" panel -------------------
+// Everything below is built with textContent (never innerHTML) because drug names and
+// assay labels are inserted into the page.
+
+function renderDecisionNote(decision) {
+    const row = document.querySelector('#ddi-result .severity-row');
+    if (!row) return;
+    const old = document.getElementById('ddi-decision');
+    if (old) old.remove();
+    if (!decision) return;   // original model in use: no calibrated abstain information
+
+    const box = document.createElement('div');
+    box.id = 'ddi-decision';
+    box.className = 'ddi-decision ' + (decision.answered ? 'confident' : 'uncertain');
+    const title = document.createElement('strong');
+    const sub = document.createElement('span');
+    const pct = Math.round((decision.coverage_target || 0.9) * 100);
+    if (decision.answered) {
+        title.textContent = 'Confident answer';
+        sub.textContent = `Only one severity stays plausible at the ${pct}% confidence level.`;
+    } else {
+        title.textContent = 'Uncertain - treat the label above with caution';
+        const set = (decision.prediction_set || []).join(' or ');
+        sub.textContent = set
+            ? `At the ${pct}% confidence level the severity could be: ${set}.`
+            : `No single severity can be recommended at the ${pct}% confidence level.`;
+    }
+    box.appendChild(title);
+    box.appendChild(sub);
+    row.insertBefore(box, row.firstChild);
+}
+
+function buildRiskNode(risk, compact) {
+    const wrap = document.createElement('div');
+    wrap.className = 'risk-overlap' + (compact ? ' compact' : '');
+
+    const head = document.createElement('div');
+    head.className = 'risk-head';
+    const title = document.createElement('strong');
+    title.textContent = 'Shared predicted lab-assay risk (experimental)';
+    const badge = document.createElement('span');
+    badge.className = 'risk-badge risk-' + risk.level;
+    const labels = { none: 'No shared risk signal', low: 'Low overlap', elevated: 'Elevated overlap', high: 'High overlap' };
+    badge.textContent = labels[risk.level] || risk.level;
+    head.appendChild(title);
+    head.appendChild(badge);
+    wrap.appendChild(head);
+
+    const summary = document.createElement('p');
+    summary.className = 'risk-summary';
+    summary.textContent = `Expected shared risk: ${risk.expected_shared.toFixed(2)} of 12 lab-assay endpoints; `
+        + `${risk.shared_flagged} flagged for both drugs.`;
+    wrap.appendChild(summary);
+
+    if (risk.shared && risk.shared.length) {
+        const list = document.createElement('ul');
+        list.className = 'risk-list';
+        risk.shared.forEach(item => {
+            const li = document.createElement('li');
+            const name = document.createElement('span');
+            name.className = 'risk-name';
+            name.textContent = item.label;
+            const detail = document.createElement('span');
+            detail.className = 'risk-detail';
+            detail.textContent = `${item.task}: ${(item.prob_a * 100).toFixed(0)}% and ${(item.prob_b * 100).toFixed(0)}%`;
+            li.appendChild(name);
+            li.appendChild(detail);
+            list.appendChild(li);
+        });
+        wrap.appendChild(list);
+    } else {
+        const none = document.createElement('p');
+        none.className = 'risk-none';
+        none.textContent = 'Neither drug shares a strongly predicted lab-assay risk with the other.';
+        wrap.appendChild(none);
+    }
+
+    if (!compact) {
+        const cav = document.createElement('p');
+        cav.className = 'risk-caveat';
+        cav.textContent = risk.caveat;
+        wrap.appendChild(cav);
+    }
+    return wrap;
+}
+
+function renderRiskPanel(risk) {
+    const panel = document.getElementById('ddi-risk');
+    if (!panel) return;
+    panel.replaceChildren();
+    if (!risk) {
+        panel.hidden = true;
+        return;
+    }
+    panel.appendChild(buildRiskNode(risk, false));
+    panel.hidden = false;
 }
 
 function renderRecord(record) {
@@ -1123,7 +1223,13 @@ function renderPairCards(drugs, pairs) {
 
         if (pair.model) {
             const strong = document.createElement('strong');
-            strong.textContent = `DualEncoder Model: ${pair.model.label} Severity`;
+            const dec = pair.model.decision;
+            if (dec && !dec.answered) {
+                const set = (dec.prediction_set || []).join(' or ');
+                strong.textContent = set ? `Model: uncertain - could be ${set}` : 'Model: uncertain';
+            } else {
+                strong.textContent = `Model: ${pair.model.label} Severity`;
+            }
             modelBlock.appendChild(strong);
 
             const probs = pair.model.probabilities || {};
@@ -1139,6 +1245,10 @@ function renderPairCards(drugs, pairs) {
             note.style.fontStyle = 'italic';
             note.textContent = 'assumes an interaction exists; the model was trained only on interacting pairs';
             modelBlock.appendChild(note);
+
+            if (pair.model.risk_overlap) {
+                modelBlock.appendChild(buildRiskNode(pair.model.risk_overlap, true));
+            }
         } else {
             const noModel = document.createElement('span');
             noModel.textContent = 'Model estimate unavailable (requires valid SMILES chemical structure for both compounds).';

@@ -20,6 +20,7 @@ from torch_geometric.data import Batch
 from src.featurize import smiles_to_graph
 from src.dataset import TOX21_TASKS, Tox21GraphDataset
 from src.ddi_model import DualEncoderDDI
+from src.ddi_inference import PairRiskExplainer, SymmetricPredictor, find_available_variant
 from src.model import get_model, MPNNModel
 from src.visualize import compute_atom_saliency, render_molecule_svg
 from src.train import train_gnn
@@ -41,6 +42,30 @@ OLLAMA_MODEL = "llama3"
 # Global cache for loaded GNN models
 LOADED_MODELS = {}
 LOADED_DDI_MODELS = {}
+SYMMETRIC_PREDICTORS = {}          # arch -> SymmetricPredictor | None (None = not available, don't retry)
+RISK_EXPLAINER = PairRiskExplainer(arch='gcn')
+
+
+def get_symmetric_predictor(arch: str):
+    """
+    Return the order-independent, abstain-capable DDI predictor for `arch`, or None when no
+    trained checkpoint exists (the app then falls back to the original DualEncoderDDI model).
+    Created once and cached; a failed load is remembered so requests don't retry it.
+    """
+    arch = arch.lower()
+    if arch in SYMMETRIC_PREDICTORS:
+        return SYMMETRIC_PREDICTORS[arch]
+    predictor = None
+    try:
+        variant = find_available_variant(arch)
+        if variant is not None:
+            predictor = SymmetricPredictor(variant, arch, explainer=RISK_EXPLAINER)
+            print(f"Loaded symmetric DDI model (variant {variant}, {arch.upper()}).")
+    except Exception as e:
+        print(f"Symmetric DDI model unavailable for {arch}: {e}")
+        predictor = None
+    SYMMETRIC_PREDICTORS[arch] = predictor
+    return predictor
 
 PRESET_MOLECULES = [
     {"name": "Aspirin (Analgesic)", "smiles": "CC(=O)OC1=CC=CC=C1C(=O)O"},
@@ -257,20 +282,50 @@ def predict_interaction():
         if graph_b is None:
             return jsonify({'error': f'Could not parse SMILES for name_b: "{smiles_b}"'}), 400
 
-        batch_a = Batch.from_data_list([graph_a])
-        batch_b = Batch.from_data_list([graph_b])
-        model = load_ddi_model(arch)
-        device = next(model.parameters()).device
-        batch_a = batch_a.to(device)
-        batch_b = batch_b.to(device)
-
-        with torch.no_grad():
-            logits = model(batch_a, batch_b)
-            probabilities = torch.softmax(logits, dim=-1)[0]
-            predicted_class = int(torch.argmax(probabilities).item())
-
         labels = {0: 'Minor', 1: 'Moderate', 2: 'Major'}
+        decision = None
+        sym = None
+        try:
+            sym = get_symmetric_predictor(arch)
+        except Exception:
+            sym = None
+
+        if sym is not None:
+            try:
+                sres = sym.predict(smiles_a, smiles_b)
+                probs_list = sres['probabilities']
+                predicted_class = sres['argmax']
+                decision = {
+                    'answered': sres['answered'],
+                    'prediction_set': sres['prediction_set'],
+                    'coverage_target': sres['coverage_target'],
+                    'model_variant': sres['variant'],
+                }
+            except Exception as e:
+                print(f"Symmetric predictor error, falling back to DualEncoder: {e}")
+                sym = None
+
+        if sym is None:
+            batch_a = Batch.from_data_list([graph_a])
+            batch_b = Batch.from_data_list([graph_b])
+            model = load_ddi_model(arch)
+            device = next(model.parameters()).device
+            batch_a = batch_a.to(device)
+            batch_b = batch_b.to(device)
+
+            with torch.no_grad():
+                logits = model(batch_a, batch_b)
+                probabilities = torch.softmax(logits, dim=-1)[0]
+                predicted_class = int(torch.argmax(probabilities).item())
+            probs_list = [float(p) for p in probabilities.cpu().tolist()]
+
         predicted_severity = labels[predicted_class]
+
+        risk_overlap = None
+        try:
+            risk_overlap = RISK_EXPLAINER.explain(smiles_a, smiles_b)
+        except Exception:
+            risk_overlap = None
 
         try:
             record = lookup_pair(DDINTER_PAIR_INDEX, smiles_a, smiles_b)
@@ -289,10 +344,10 @@ def predict_interaction():
                 'agrees_with_prediction': None
             }
 
-        return jsonify({
+        out = {
             'predicted_severity': predicted_severity,
             'probabilities': {
-                labels[idx]: float(probabilities[idx].cpu().item())
+                labels[idx]: float(probs_list[idx])
                 for idx in range(3)
             },
             'smiles_a': smiles_a,
@@ -300,8 +355,14 @@ def predict_interaction():
             'name_a': name_a,
             'name_b': name_b,
             'arch': arch.upper(),
-            'ddinter_record': ddinter_record
-        })
+            'ddinter_record': ddinter_record,
+        }
+        if decision is not None:
+            out['decision'] = decision
+        if risk_overlap is not None:
+            out['risk_overlap'] = risk_overlap
+
+        return jsonify(out)
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -624,28 +685,89 @@ def predict_pair_severity(smiles_a: Optional[str], smiles_b: Optional[str], arch
         if graph_a is None or graph_b is None:
             return None
 
-        batch_a = Batch.from_data_list([graph_a])
-        batch_b = Batch.from_data_list([graph_b])
-        model = load_ddi_model(arch)
-        device = next(model.parameters()).device
-        batch_a = batch_a.to(device)
-        batch_b = batch_b.to(device)
-
-        with torch.no_grad():
-            logits = model(batch_a, batch_b)
-            probabilities = torch.softmax(logits, dim=-1)[0]
-            predicted_class = int(torch.argmax(probabilities).item())
-
         labels = {0: 'Minor', 1: 'Moderate', 2: 'Major'}
-        return {
+        sym = None
+        try:
+            sym = get_symmetric_predictor(arch)
+        except Exception:
+            sym = None
+
+        decision = None
+        sym_result = None
+        if sym is not None:
+            try:
+                sym_result = sym.predict(smiles_a, smiles_b)
+                probs_list = sym_result['probabilities']
+                predicted_class = sym_result['argmax']
+                decision = {
+                    'answered': sym_result['answered'],
+                    'prediction_set': sym_result['prediction_set'],
+                    'coverage_target': sym_result['coverage_target'],
+                    'model_variant': sym_result['variant']
+                }
+            except Exception:
+                sym = None
+
+        if sym is None:
+            batch_a = Batch.from_data_list([graph_a])
+            batch_b = Batch.from_data_list([graph_b])
+            model = load_ddi_model(arch)
+            device = next(model.parameters()).device
+            batch_a = batch_a.to(device)
+            batch_b = batch_b.to(device)
+
+            with torch.no_grad():
+                logits = model(batch_a, batch_b)
+                probabilities = torch.softmax(logits, dim=-1)[0]
+                predicted_class = int(torch.argmax(probabilities).item())
+            probs_list = [float(p) for p in probabilities.cpu().tolist()]
+
+        risk_overlap = None
+        try:
+            risk_overlap = RISK_EXPLAINER.explain(smiles_a, smiles_b)
+        except Exception:
+            risk_overlap = None
+
+        res = {
             'label': labels[predicted_class],
             'probabilities': {
-                labels[idx]: float(probabilities[idx].cpu().item())
+                labels[idx]: float(probs_list[idx])
                 for idx in range(3)
             }
         }
+        if decision is not None:
+            res['decision'] = decision
+        if risk_overlap is not None:
+            res['risk_overlap'] = risk_overlap
+        return res
     except Exception:
         return None
+
+
+@app.route('/api/pair-risk', methods=['POST'])
+def pair_risk():
+    """
+    "Why is this pair risky?" -- shared predicted-toxicity profile for two drugs.
+    Body: {"name_a": ..., "name_b": ...} or {"smiles_a": ..., "smiles_b": ...}.
+    The score is a research signal derived from lab-assay predictions, not a clinical verdict.
+    """
+    data = request.get_json() or {}
+    try:
+        smiles_a = (data.get('smiles_a') or '').strip() or name_to_smiles((data.get('name_a') or '').strip())
+        smiles_b = (data.get('smiles_b') or '').strip() or name_to_smiles((data.get('name_b') or '').strip())
+    except (ValueError, ConnectionError, TimeoutError) as e:
+        return jsonify({'error': str(e)}), 400
+
+    try:
+        result = RISK_EXPLAINER.explain(smiles_a, smiles_b)
+    except Exception as e:
+        return jsonify({'error': f'Risk-profile computation failed: {e}'}), 500
+    if result is None:
+        return jsonify({
+            'error': 'Risk profiles are unavailable.',
+            'reason': getattr(RISK_EXPLAINER, 'unavailable_reason', None) or 'One of the molecules could not be parsed.',
+        }), 503
+    return jsonify({'smiles_a': smiles_a, 'smiles_b': smiles_b, 'risk_overlap': result})
 
 
 @app.route('/api/ddinter/suggest', methods=['GET'])
@@ -784,4 +906,4 @@ if __name__ == '__main__':
     print(" GNN Toxicity Web Dashboard Server Ready!")
     print(" Running at http://127.0.0.1:5000")
     print("=======================================================\n")
-    app.run(host='127.0.0.1', port=5000, debug=True, threaded=True)
+    app.run(host='127.0.0.1', port=5000, debug=True, use_reloader=False, threaded=True)

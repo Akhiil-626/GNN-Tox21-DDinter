@@ -1,0 +1,11 @@
+metric,value
+names_raw,1537.0
+molecules_canonical,1391.0
+names_merged,146.0
+pairs_raw,127290.0
+pairs_unique,84151.0
+pairs_conflicting_severity,2168.0
+s0_macro_f1_pre_fix,0.805
+s0_macro_f1_post_fix,0.78
+s1_macro_f1_pre_fix,0.639
+s1_macro_f1_post_fix,0.634

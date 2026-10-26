@@ -1,0 +1,49 @@
+{
+  "data source": "DDInter",
+  "unique pairs used": 84151,
+  "seeds": "0, 1, 2, 3, 4, 5, 6, 7",
+  "GNN architecture": "not run",
+  "profiler_mode": "crossfit",
+  "conformal alpha": 0.1,
+  "note 1": "Drug identity by canonical molecule: 1537 names -> 1391 molecules (146 names merged).",
+  "note 2": "De-duplicated 43139 duplicate/self pairs (2168 had conflicting severities; the most severe was kept).",
+  "note 3": "Tox21 profiler mode: crossfit; 860/1391 molecules also appear in the Tox21 table.",
+  "note 4": "Dropped 0 pairs lacking a graph, profile or fingerprint for one drug (all models therefore see identical pairs).",
+  "args": {
+    "arch": "gcn",
+    "profiler_arch": "gcn",
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "variants": [
+      "A",
+      "B",
+      "B_shuf"
+    ],
+    "cyp": false,
+    "epochs": 25,
+    "patience": 6,
+    "batch_size": 64,
+    "lr": 0.001,
+    "hidden_dim": 128,
+    "alpha": 0.1,
+    "rf_trees": 300,
+    "rf_max_train": 60000,
+    "max_pairs": 0,
+    "no_gnn": true,
+    "no_tabular": false,
+    "save_models": false,
+    "out_dir": "results/ablation",
+    "synthetic": false,
+    "synthetic_seed": 0,
+    "synthetic_tox_signal": 0.6,
+    "synthetic_tox_independent": false
+  }
+}

@@ -1,0 +1,10 @@
+topic,traditional,project_rigor,evidence,status
+Drug Identity & Aliases,Name-based keys split synonyms across train/test,Canonical SMILES matching; alias deduplication,"146 names merged; 2,168 conflicts resolved",Candidate contribution (rigor)
+Evaluation Protocol,Random pair splitting leaks drug chemistry,"Drug-level disjoint splits: S0, S1, S2","Tested on 84,151 pairs across 8 seeds",Candidate contribution (rigor)
+Benchmark Baselines,Evaluate only against other complex models,"Chemistry-free floors (Prior, DrugMean)",S2 structure adds only +0.088 over floor,Candidate contribution (rigor)
+Feature Stacking Leakage,Stacking predicted features trained on test drugs,5-fold cross-fitting for leak-free profiling,ROC-AUC 0.807 held-out across 12 assays,Methodological contribution
+Negative Control Rigor,Claim feature gains without permutation control,Shuffled-profile control derangement,Real profiles beat noise but fail vs structure,Methodological contribution
+Claim Rule Threshold,Reporting best single seed or marginal gains,>=5 seeds + paired Wilcoxon vs baseline & noise,"Not supported on S0, S1, S2 (0/8 win)",Methodological contribution
+Mechanism Claims,Treating correlation as confirmed mechanism,Confounder stress test & matched null,Residual rho=0.042 unconfirmed (proxy noise),Methodological contribution
+Input Order Symmetry,"Concatenation heads: P(A,B) != P(B,A)","Symmetric pooling: [hA+hB, |hA-hB|, hA*hB]",Original flips 27.2%; Symmetric flips 0.0%,"Engineering, not novelty"
+Selective Abstention,Forced predictions on highly novel drugs,Inductive Mondrian conformal prediction,"90% coverage maintained on S0, S1, S2",Exists in literature

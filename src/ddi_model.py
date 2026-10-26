@@ -193,6 +193,71 @@ class DualEncoderDDI(nn.Module):
         return logits
 
 
+class SymmetricDDI(nn.Module):
+    """
+    Order-independent DDI severity model (the project's improved head).
+
+    Fixes a flaw in DualEncoderDDI: concatenating [emb_A ; emb_B] makes the output
+    depend on which drug is typed first, even though an interaction between A and B
+    is the same as between B and A. Here the two embeddings are combined with
+    symmetric operations only:
+
+        z = [ e_a + e_b ,  |e_a - e_b| ,  e_a * e_b ]
+
+    and (optionally) concatenated with a vector of extra pair features, such as the
+    predicted-toxicity overlap features from src.ddi_features. Those extra features
+    are themselves symmetric, so the whole model satisfies f(A, B) == f(B, A)
+    exactly in eval mode (verified by tests/test_ddi_torch.py).
+
+    extra_dim = 0 gives the structure-only model (variant A in the ablation).
+    """
+    def __init__(self, arch: str = 'gin', in_dim: int = 72, edge_dim: int = 6,
+                 hidden_dim: int = 128, num_outputs: int = 3, dropout: float = 0.2,
+                 extra_dim: int = 0):
+        super().__init__()
+        self.arch = arch.lower()
+        self.extra_dim = int(extra_dim)
+        self.encoder = get_encoder(self.arch, in_dim=in_dim, edge_dim=edge_dim, hidden_dim=hidden_dim)
+
+        if self.extra_dim > 0:
+            # Small projection + normalisation so raw feature scales cannot swamp the embeddings.
+            self.extra_proj = nn.Sequential(
+                nn.LayerNorm(self.extra_dim),
+                nn.Linear(self.extra_dim, hidden_dim // 2),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+            )
+            head_in = hidden_dim * 3 + hidden_dim // 2
+        else:
+            self.extra_proj = None
+            head_in = hidden_dim * 3
+
+        self.interaction_head = nn.Sequential(
+            nn.Linear(head_in, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_outputs),
+        )
+
+    def embed(self, graph):
+        edge_attr = getattr(graph, 'edge_attr', None) if self.arch == 'mpnn' else None
+        return self.encoder(graph.x, graph.edge_index, edge_attr, graph.batch)
+
+    def forward(self, graph_a, graph_b, extra=None):
+        e_a, e_b = self.embed(graph_a), self.embed(graph_b)
+        z = torch.cat([e_a + e_b, torch.abs(e_a - e_b), e_a * e_b], dim=-1)
+        if self.extra_proj is not None:
+            if extra is None:
+                raise ValueError("This model was built with extra_dim > 0 but no extra features were passed.")
+            z = torch.cat([z, self.extra_proj(extra)], dim=-1)
+        return self.interaction_head(z)
+
+    def config(self, in_dim: int, edge_dim: int, hidden_dim: int, num_outputs: int = 3) -> dict:
+        """Serialisable constructor arguments, stored in checkpoints."""
+        return {'model': 'symmetric', 'arch': self.arch, 'in_dim': in_dim, 'edge_dim': edge_dim,
+                'hidden_dim': hidden_dim, 'num_outputs': num_outputs, 'extra_dim': self.extra_dim}
+
+
 if __name__ == '__main__':
     # Sanity check with dummy pairs (mirrors the __main__ block in model.py).
     # This validates the plumbing BEFORE any real DDI data is wired in.

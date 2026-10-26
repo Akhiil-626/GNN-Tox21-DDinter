@@ -76,18 +76,15 @@ def compute_class_weights(pairs: List[Tuple[Any, Any, int]], num_classes: int = 
 
 
 def train_epoch(model: nn.Module, loader: DataLoader, optimizer: torch.optim.Optimizer,
-                device: torch.device, class_weights: torch.Tensor) -> float:
-    """Train for one epoch with class-weighted cross-entropy loss.
-
-    Shows a per-batch progress bar (tqdm) so slow-but-working architectures
-    like MPNN (whose edge-conditioned NNConv layers are far more compute-heavy
-    per batch than GCN/GIN) are visibly distinguishable from a genuine hang.
-    """
+                device: torch.device, class_weights: torch.Tensor,
+                epoch: Optional[int] = None, epochs: Optional[int] = None) -> float:
+    """Train for one epoch with class-weighted cross-entropy loss."""
     model.train()
     total_loss = 0.0
     total_samples = 0
 
-    progress = tqdm(loader, desc="Training", leave=False)
+    desc = f"  Epoch {epoch:02d}/{epochs:02d} [Train]" if (epoch and epochs) else "  Training"
+    progress = tqdm(loader, desc=desc, leave=False, dynamic_ncols=True)
     for batch_a, batch_b, labels in progress:
         batch_a = batch_a.to(device)
         batch_b = batch_b.to(device)
@@ -99,21 +96,24 @@ def train_epoch(model: nn.Module, loader: DataLoader, optimizer: torch.optim.Opt
         loss.backward()
         optimizer.step()
 
-        total_loss += loss.item() * labels.size(0)
-        total_samples += labels.size(0)
-        progress.set_postfix(loss=f"{loss.item():.4f}")
+        batch_sz = labels.size(0)
+        total_loss += loss.item() * batch_sz
+        total_samples += batch_sz
+        progress.set_postfix({'loss': f"{loss.item():.4f}", 'avg': f"{total_loss / max(total_samples, 1):.4f}"})
 
     return total_loss / max(total_samples, 1)
 
 
 @torch.no_grad()
-def evaluate_model(model: nn.Module, loader: DataLoader, device: torch.device) -> Tuple[float, float, np.ndarray, np.ndarray]:
+def evaluate_model(model: nn.Module, loader: DataLoader, device: torch.device,
+                   desc: str = "Evaluating") -> Tuple[float, float, np.ndarray, np.ndarray]:
     """Evaluate model on val or test loader. Returns (accuracy, macro_f1, y_true, y_pred)."""
     model.eval()
     all_labels = []
     all_preds = []
 
-    for batch_a, batch_b, labels in loader:
+    progress = tqdm(loader, desc=f"  {desc}", leave=False, dynamic_ncols=True)
+    for batch_a, batch_b, labels in progress:
         batch_a = batch_a.to(device)
         batch_b = batch_b.to(device)
 
@@ -159,6 +159,21 @@ def train_ddi(arch: str = 'gin', epochs: int = 30, batch_size: int = 64, lr: flo
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
 
+    param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    gpu_info = f" ({torch.cuda.get_device_name(0)})" if device.type == 'cuda' else ""
+    print(f"\n=======================================================", flush=True)
+    print(f" Starting DDI Training for {arch.upper()} Dual-Encoder", flush=True)
+    print(f"=======================================================", flush=True)
+    print(f" Device          : {device}{gpu_info}", flush=True)
+    print(f" Trainable Params: {param_count:,}", flush=True)
+    print(f" Architecture    : {arch.upper()} (Hidden Dim: {hidden_dim}, In Dim: {in_dim}, Edge Dim: {edge_dim})", flush=True)
+    print(f" Hyperparameters : Epochs: {epochs} | Batch Size: {batch_size} | LR: {lr}", flush=True)
+    print(f" Cold-Start Split: Train: {len(train_pairs)} pairs ({len(train_loader)} batches) | "
+          f"Val: {len(val_pairs)} pairs ({len(val_loader)} batches) | "
+          f"Test: {len(test_pairs)} pairs ({len(test_loader)} batches)", flush=True)
+    print(f" Class Weights   : {class_weights.tolist()}", flush=True)
+    print(f"-------------------------------------------------------", flush=True)
+
     best_val_f1 = 0.0
     best_checkpoint_path = os.path.join(save_dir, f"best_ddi_{arch}.pt")
 
@@ -166,8 +181,8 @@ def train_ddi(arch: str = 'gin', epochs: int = 30, batch_size: int = 64, lr: flo
 
     for epoch in range(1, epochs + 1):
         epoch_start = time.time()
-        loss = train_epoch(model, train_loader, optimizer, device, class_weights)
-        val_acc, val_f1, _, _ = evaluate_model(model, val_loader, device)
+        loss = train_epoch(model, train_loader, optimizer, device, class_weights, epoch=epoch, epochs=epochs)
+        val_acc, val_f1, _, _ = evaluate_model(model, val_loader, device, desc=f"Val [{epoch:02d}/{epochs:02d}]")
         scheduler.step(val_f1)
         epoch_time = time.time() - epoch_start
 
@@ -175,6 +190,7 @@ def train_ddi(arch: str = 'gin', epochs: int = 30, batch_size: int = 64, lr: flo
         history['val_acc'].append(val_acc)
         history['val_f1'].append(val_f1)
 
+        curr_lr = optimizer.param_groups[0]['lr']
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1
             checkpoint = {
@@ -188,26 +204,28 @@ def train_ddi(arch: str = 'gin', epochs: int = 30, batch_size: int = 64, lr: flo
                 }
             }
             torch.save(checkpoint, best_checkpoint_path)
-            saved_str = f" [Saved Best Model: F1={val_f1:.4f}]"
+            saved_str = f" [Saved Best Model: Val F1 = {val_f1:.4f}]"
         else:
             saved_str = ""
 
-        if epoch % 5 == 0 or epoch == 1 or epoch == epochs:
-            print(f"Epoch {epoch:02d}/{epochs:02d} | Loss: {loss:.4f} | "
-                  f"Val Acc: {val_acc:.4f} | Val Macro-F1: {val_f1:.4f} | "
-                  f"Time: {epoch_time:.1f}s{saved_str}")
+        print(f"Epoch {epoch:02d}/{epochs:02d} | Train Loss: {loss:.4f} | "
+              f"Val Acc: {val_acc:.4f} | Val Macro-F1: {val_f1:.4f} | "
+              f"LR: {curr_lr:.1e} | Time: {epoch_time:.1f}s{saved_str}", flush=True)
 
     # Load best model for final test evaluation
+    print(f"\nEvaluating Best Checkpoint on Test Set ({len(test_pairs)} pairs)...", flush=True)
     saved_ckpt = torch.load(best_checkpoint_path, weights_only=False)
     model.load_state_dict(saved_ckpt['state_dict'])
 
-    test_acc, test_f1, y_true_test, y_pred_test = evaluate_model(model, test_loader, device)
+    test_acc, test_f1, y_true_test, y_pred_test = evaluate_model(model, test_loader, device, desc="Testing")
     report = classification_report(y_true_test, y_pred_test,
                                     target_names=[LABEL_TO_LEVEL[i] for i in range(3)],
                                     zero_division=0)
 
-    print(f"\nFinal Test Accuracy: {test_acc:.4f} | Test Macro-F1: {test_f1:.4f}")
-    print("Per-class report:\n", report)
+    print(f"-------------------------------------------------------", flush=True)
+    print(f"Final Test Accuracy: {test_acc:.4f} | Test Macro-F1: {test_f1:.4f}", flush=True)
+    print(f"-------------------------------------------------------", flush=True)
+    print("Per-class report:\n", report, flush=True)
 
     return {
         'model': model,

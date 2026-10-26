@@ -1,0 +1,21 @@
+{
+  "data source": "DDInter",
+  "profiler_mode": "crossfit",
+  "bootstrap replicates": 300,
+  "permutations": 300,
+  "controls": "additive risk, fingerprint Tanimoto, ATC-file co-membership (proxy), log popularity",
+  "note 1": "Drug identity by canonical molecule: 1537 names -> 1391 molecules (146 names merged).",
+  "note 2": "De-duplicated 43139 duplicate/self pairs (2168 had conflicting severities; the most severe was kept).",
+  "note 3": "Tox21 profiler mode: crossfit; 860/1391 molecules also appear in the Tox21 table.",
+  "note 4": "Dropped 0 pairs lacking a graph, profile or fingerprint for one drug (all models therefore see identical pairs).",
+  "args": {
+    "profiler_arch": "gcn",
+    "n_boot": 300,
+    "n_perm": 300,
+    "seed": 0,
+    "out_dir": "results/overlap_analysis",
+    "synthetic": false,
+    "synthetic_tox_signal": 0.0,
+    "synthetic_seed": 0
+  }
+}

@@ -4,6 +4,7 @@ Handles data loading, masked BCE loss computation, epoch validation, checkpointi
 """
 
 import os
+import time
 import argparse
 import numpy as np
 import torch
@@ -51,13 +52,16 @@ def compute_metrics(y_true: np.ndarray, y_pred_probs: np.ndarray, tasks: List[st
 
 
 def train_epoch(model: nn.Module, loader: DataLoader, optimizer: torch.optim.Optimizer, 
-                device: torch.device, pos_weight: Optional[torch.Tensor] = None) -> float:
+                device: torch.device, pos_weight: Optional[torch.Tensor] = None,
+                epoch: Optional[int] = None, epochs: Optional[int] = None) -> float:
     """Train for one epoch with class-imbalance weighted masked BCE loss."""
     model.train()
     total_loss = 0.0
     total_samples = 0
     
-    for batch in loader:
+    desc = f"  Train [{epoch:02d}/{epochs:02d}]" if (epoch and epochs) else "  Training"
+    pbar = tqdm(loader, desc=desc, leave=False, dynamic_ncols=True)
+    for batch in pbar:
         batch = batch.to(device)
         optimizer.zero_grad()
         
@@ -82,20 +86,24 @@ def train_epoch(model: nn.Module, loader: DataLoader, optimizer: torch.optim.Opt
         loss.backward()
         optimizer.step()
         
-        total_loss += loss.item() * mask.sum().item()
-        total_samples += mask.sum().item()
+        n_masked = mask.sum().item()
+        total_loss += loss.item() * n_masked
+        total_samples += n_masked
+        pbar.set_postfix({'loss': f"{loss.item():.4f}", 'avg_loss': f"{total_loss / max(total_samples, 1):.4f}"})
         
     return total_loss / max(total_samples, 1)
 
 
 @torch.no_grad()
-def evaluate_model(model: nn.Module, loader: DataLoader, device: torch.device) -> Tuple[float, Dict[str, Any], np.ndarray, np.ndarray]:
+def evaluate_model(model: nn.Module, loader: DataLoader, device: torch.device,
+                   desc: str = "Evaluating") -> Tuple[float, Dict[str, Any], np.ndarray, np.ndarray]:
     """Evaluate model on val or test loader."""
     model.eval()
     all_y_true = []
     all_y_probs = []
     
-    for batch in loader:
+    pbar = tqdm(loader, desc=f"  {desc}", leave=False, dynamic_ncols=True)
+    for batch in pbar:
         batch = batch.to(device)
         if isinstance(model, MPNNModel):
             logits = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
@@ -120,7 +128,6 @@ def train_gnn(arch: str = 'gcn', epochs: int = 35, batch_size: int = 64, lr: flo
     """Run full training procedure for a specific GNN architecture."""
     os.makedirs(save_dir, exist_ok=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"\n--- Starting Training for {arch.upper()} GNN on {device} ---")
     
     dataset = Tox21GraphDataset(root_dir="data")
     train_graphs, val_graphs, test_graphs = dataset.get_scaffold_splits()
@@ -150,19 +157,37 @@ def train_gnn(arch: str = 'gcn', epochs: int = 35, batch_size: int = 64, lr: flo
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
     
+    param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    gpu_info = f" ({torch.cuda.get_device_name(0)})" if device.type == 'cuda' else ""
+    print(f"\n=======================================================", flush=True)
+    print(f" Starting Training for {arch.upper()} GNN", flush=True)
+    print(f"=======================================================", flush=True)
+    print(f" Device          : {device}{gpu_info}", flush=True)
+    print(f" Trainable Params: {param_count:,}", flush=True)
+    print(f" Architecture    : {arch.upper()} (Hidden Dim: {hidden_dim}, In: {in_dim}, Edge: {edge_dim})", flush=True)
+    print(f" Hyperparameters : Epochs: {epochs} | Batch Size: {batch_size} | Initial LR: {lr}", flush=True)
+    print(f" Scaffold Splits : Train: {len(train_graphs)} graphs ({len(train_loader)} batches) | "
+          f"Val: {len(val_graphs)} graphs ({len(val_loader)} batches) | "
+          f"Test: {len(test_graphs)} graphs ({len(test_loader)} batches)", flush=True)
+    print(f" Pos Imbalance   : weights range [{min(pos_weights):.2f} - {max(pos_weights):.2f}] across 12 endpoints", flush=True)
+    print(f"-------------------------------------------------------", flush=True)
+
     best_val_auc = 0.0
     best_checkpoint_path = os.path.join(save_dir, f"best_{arch}.pt")
     
     history = {'train_loss': [], 'val_auc': []}
     
     for epoch in range(1, epochs + 1):
-        loss = train_epoch(model, train_loader, optimizer, device, pos_weight=pos_weight_tensor)
-        val_auc, per_task_val, _, _ = evaluate_model(model, val_loader, device)
+        t0 = time.time()
+        loss = train_epoch(model, train_loader, optimizer, device, pos_weight=pos_weight_tensor, epoch=epoch, epochs=epochs)
+        val_auc, per_task_val, _, _ = evaluate_model(model, val_loader, device, desc=f"Val [{epoch:02d}/{epochs:02d}]")
         scheduler.step(val_auc)
+        elapsed = time.time() - t0
         
         history['train_loss'].append(loss)
         history['val_auc'].append(val_auc)
         
+        curr_lr = optimizer.param_groups[0]['lr']
         if val_auc > best_val_auc:
             best_val_auc = val_auc
             checkpoint = {
@@ -176,21 +201,21 @@ def train_gnn(arch: str = 'gcn', epochs: int = 35, batch_size: int = 64, lr: flo
                 }
             }
             torch.save(checkpoint, best_checkpoint_path)
-            saved_str = f" [Saved Best Model: {val_auc:.4f}]"
+            saved_str = f" [Saved Best Model: Val AUC = {val_auc:.4f}]"
         else:
             saved_str = ""
             
-        if epoch % 5 == 0 or epoch == 1 or epoch == epochs:
-            print(f"Epoch {epoch:02d}/{epochs:02d} | Loss: {loss:.4f} | Val ROC-AUC: {val_auc:.4f}{saved_str}")
+        print(f"Epoch {epoch:02d}/{epochs:02d} | Train Loss: {loss:.4f} | Val ROC-AUC: {val_auc:.4f} | LR: {curr_lr:.1e} | Time: {elapsed:.1f}s{saved_str}", flush=True)
             
     # Load best model for final evaluation on test set
+    print(f"\nEvaluating Best Checkpoint on Test Set ({len(test_graphs)} molecules)...", flush=True)
     saved_ckpt = torch.load(best_checkpoint_path, weights_only=False)
     if isinstance(saved_ckpt, dict) and 'state_dict' in saved_ckpt:
         model.load_state_dict(saved_ckpt['state_dict'])
     else:
         model.load_state_dict(saved_ckpt)
         
-    test_auc, per_task_test, y_true_test, y_probs_test = evaluate_model(model, test_loader, device)
+    test_auc, per_task_test, y_true_test, y_probs_test = evaluate_model(model, test_loader, device, desc="Testing")
     
     # Save training curves plot to results/figures/
     fig_dir = os.path.join("results", "figures")
@@ -218,9 +243,11 @@ def train_gnn(arch: str = 'gcn', epochs: int = 35, batch_size: int = 64, lr: flo
     curve_path = os.path.join(fig_dir, f'training_curves_{arch}.png')
     plt.savefig(curve_path, dpi=300)
     plt.close()
-    print(f"Saved training curves figure to {curve_path}")
+    print(f"Saved training curves figure to {curve_path}", flush=True)
     
-    print(f"\nFinal Test ROC-AUC for {arch.upper()}: {test_auc:.4f}")
+    print(f"-------------------------------------------------------", flush=True)
+    print(f"Final Test Mean ROC-AUC for {arch.upper()}: {test_auc:.4f}", flush=True)
+    print(f"-------------------------------------------------------\n", flush=True)
     return {
         'model': model,
         'arch': arch,

@@ -85,7 +85,7 @@ $$\mathbf{\hat{y}} = \sigma(\text{MLP}(\mathbf{h}_G)) \in [0, 1]^{12}$$
 
 ```bash
 # 1. Clone or navigate to the repository workspace
-cd d:\C-FOOTPRINT
+cd C-FOOTPRINT
 
 # 2. Install dependencies
 pip install -r requirements.txt
@@ -136,6 +136,56 @@ python src/app.py
 
 Open your browser and navigate to: **`http://127.0.0.1:5000`**
 
+### 5.6 Step 6: Mechanism-Aware DDI Study (research extension)
+
+This extension asks one question and answers it with controls: **do toxicity "risk fingerprints" predicted from structure alone help predict DDI severity, especially for drugs the model has never seen?** See [`docs/NOVELTY_AND_LIMITS.md`](docs/NOVELTY_AND_LIMITS.md) for the exact claim, what is and is not novel, and how to read the results honestly.
+
+What was added:
+
+| Piece | File | Purpose |
+|---|---|---|
+| Order-independent DDI model | `src/ddi_model.py` (`SymmetricDDI`) | `f(A,B) == f(B,A)`; the original concat head did not satisfy this |
+| Risk fingerprints | `src/risk_profile.py`, `src/ddi_features.py` | 12 predicted Tox21 scores per drug; symmetric pair features; shared-risk explanation |
+| Leak-free profiles | `src/crossfit.py` | K-fold scaffold cross-fitting so a drug is never profiled by a model that trained on it |
+| S0 / S1 / S2 evaluation | `src/ddi_splits.py` | both drugs seen / one new / both new; de-duplicates pairs; leakage assertions |
+| Baselines | `src/ddi_baselines.py` | Prior, per-drug mean ("is it just a dangerous drug?"), fingerprint forests |
+| Ablation + report | `src/run_ablation.py`, `src/ablation_report.py` | multi-seed study, shuffled-profile control, strict rule-based verdicts |
+| Overlap-lead analysis | `src/overlap_analysis.py` | tests whether the shared-risk association survives similarity / class / popularity / own-risk controls (can rule an effect out, cannot confirm one) |
+| Abstain mode | `src/ddi_conformal.py` | split-conformal prediction sets; the app says "uncertain" instead of guessing |
+| Dashboard | `public/`, `src/app.py`, `src/ddi_inference.py` | shared-risk panel (labelled experimental), uncertainty banner, `/api/pair-risk` |
+
+```bash
+# 1. Honest risk-fingerprint models (K fold models per task; ~K x a normal Tox21 training run)
+python -m src.crossfit --task tox21 --arch gcn --folds 5 --epochs 25
+
+# 1b. Optional metabolism features: put the five TDC CYP files (Veith) in data/cyp/ first
+python -m src.crossfit --task cyp --arch gcn --folds 5 --epochs 25 --cyp_dir data/cyp
+
+# 2. Fast tabular study (no GNN training; minutes on CPU). Run this first.
+python -m src.run_ablation --no_gnn --seeds 0 1 2 3 4 5 6 7
+
+# 3. Overlap-lead analysis (no training; minutes). Rules the association out or leaves it unconfirmed.
+python -m src.overlap_analysis --profiler_arch gcn --n_boot 300 --n_perm 300
+
+# 4. GNN smoke test (tiny; run before the full study and fix anything it reports)
+python -m src.run_ablation --max_pairs 3000 --epochs 3 --seeds 0 1 --variants A B B_shuf --no_tabular --out_dir results/ablation_smoke
+
+# 5. Full GNN study (A = structure only, B = + Tox21 profile, B_shuf = shuffled control).
+#    Separate out_dir so the tabular results in results/ablation/ are kept.
+python -m src.run_ablation --arch gcn --variants A B B_shuf --seeds 0 1 2 3 4 --no_tabular --save_models --out_dir results/ablation_gnn
+
+# 6. Dashboard. Serves the structure-only model (variant A) by default;
+#    DDI_VARIANT=B|C|D overrides it, and should only be set if that variant earned it in step 5.
+python src/app.py
+```
+
+Outputs land in `results/ablation/` (tabular), `results/ablation_gnn/` (GNN) and `results/overlap_analysis/`: `ablation_report.md` (read this), `ablation_summary.csv`, `ablation_runs.csv`, `conformal.csv`, `overlap_correlation.csv`, `figures/ablation_macro_f1.png`.
+
+Self-test without any data or GPU (fabricated data, **never report these numbers**): `python -m src.run_ablation --synthetic --no_gnn`.
+
+Tests: `python -m pytest tests -q` (torch tests skip automatically if torch is absent).
+
+
 ### Limitations & Data Requirements
 
 - The DDInter record lookup and Prescription Checker need the local DDInter CSVs (`data/raw/ddinter_downloads_code_{A,B,D,H,L,P,R,V}.csv`) and the SMILES cache (`data/raw/ddinter_smiles_cache.json`), which are not in the repository because `data/raw` is gitignored. Without them, the record row and prescription checker panel hide themselves in the UI. Run `python -m src.ddi_dataset` first to download the files and build the cache.
@@ -144,13 +194,44 @@ Open your browser and navigate to: **`http://127.0.0.1:5000`**
 
 ---
 
+## Research findings at a glance
+
+A controlled evaluation of whether predicted toxicity profiles improve drug-drug interaction (DDI) severity prediction yielded a clear negative finding: stacking predicted Tox21 risk fingerprints consistently lowers macro-F1 over molecular structure alone across seen and novel drug scenarios. For an in-depth analysis of traditional DDI benchmark failure modes, confounding stress tests, and methodological contributions, see the full research document: [docs/RESEARCH_GAPS.md](docs/RESEARCH_GAPS.md).
+
+### Baseline Ladder Across Inductive Scenarios
+Adding predicted toxicity features (`+ predicted Tox21 profile`, 0.761 / 0.598 / 0.354) consistently underperforms 2D structure alone (`Fingerprint forest`, 0.780 / 0.634 / 0.371) across S0 (both seen), S1 (one new), and S2 (both new) on 84,151 DDInter pairs over 8 seeds.
+
+![Figure 1: Baseline Ladder](results/study_figures/fig1_baseline_ladder.png)
+
+### Scenario Collapse under Inductive Generalization
+All models experience severe performance collapse as evaluation moves from transductive pairs (S0) to novel compounds (S2), demonstrating that transductive benchmarks overestimate real-world novel drug generalization by > 0.40 macro-F1.
+
+![Figure 4: Scenario Collapse](results/study_figures/fig4_scenario_collapse.png)
+
+### C-FOOTPRINT Research Gap Map
+A systematic audit comparing traditional DDI benchmark practices with C-FOOTPRINT evidence-first methodology across data leakage, baselines, feature stacking, mechanism claims, and order symmetry.
+
+![Figure 10: Research Gap Map](results/study_figures/fig10_gap_map.png)
+
+---
+
 ## 6. Directory Structure
 
 ```
-d:\C-FOOTPRINT\
+C-FOOTPRINT/
 ├── data/
 │   ├── raw/                      # Downloaded Tox21 raw dataset CSV & DDInter data
 │   └── processed/                # Cached PyG molecular graph tensors
+├── docs/
+│   └── NOVELTY_AND_LIMITS.md     # Claim, literature positioning, honest limits
+├── landing/                      # React + Vite + Tailwind landing page
+├── models/                       # GNN checkpoints, crossfit folds, conformal calibrations
+├── public/
+│   ├── index.html                # Interactive screening dashboard UI
+│   ├── masthead.css              # Top bar styling
+│   ├── styles.css                # Base dashboard styling system
+│   ├── app.js                    # Client JS for real-time inference
+│   └── landing/                  # Compiled production landing page build
 ├── src/
 │   ├── __init__.py
 │   ├── featurize.py              # SMILES to Graph featurization (RDKit)
@@ -158,19 +239,40 @@ d:\C-FOOTPRINT\
 │   ├── ddi_dataset.py            # DDInter dataset loader & SMILES cache builder
 │   ├── ddinter_lookup.py         # DDInter canonical SMILES pair index & record lookup
 │   ├── model.py                  # GCN, GIN, MPNN & Morgan FP baseline
+│   ├── ddi_model.py              # DualEncoderDDI + SymmetricDDI (order-independent)
+│   ├── ddi_features.py           # Risk-fingerprint pair features & shared-risk explanation
+│   ├── ddi_splits.py             # S0/S1/S2 drug-level splits, pair de-duplication, leakage checks
+│   ├── ddi_baselines.py          # Prior / per-drug-mean / fingerprint-forest baselines
+│   ├── ddi_conformal.py          # Split-conformal prediction sets & abstain rule
+│   ├── ddi_inference.py          # Serving glue for the dashboard
+│   ├── risk_profile.py           # RiskProfiler (cross-fit aware)
+│   ├── crossfit.py               # K-fold cross-fitted Tox21 / CYP models
+│   ├── chem_utils.py             # Canonical molecule keys, balanced scaffold folds
+│   ├── run_ablation.py           # Full multi-seed study runner
+│   ├── ablation_report.py        # Statistics, strict verdict rules, markdown report
+│   ├── overlap_analysis.py       # Confounding controls analysis
+│   ├── controlled_overlap_test.py# Controlled synthetic overlap test
+│   ├── ddi_synthetic.py          # Fabricated data for pipeline self-tests only
 │   ├── train.py                  # Masked BCE loss training loop
+│   ├── train_ddi.py              # Cold-start DDI training loop
 │   ├── evaluate.py               # Per-task ROC-AUC, PR-AUC, Sensitivity & Specificity
+│   ├── evaluate_ddi.py           # DDI evaluation metrics & confusion matrix
 │   ├── visualize.py              # Gradient atom saliency & 2D SVG renderer
 │   └── app.py                    # Flask web application server
-├── public/
-│   ├── index.html                # Dark glassmorphic user interface
-│   ├── styles.css                # Styling system & CSS variables
-│   └── app.js                    # Client JS for real-time inference
+├── tests/
+│   ├── test_ddinter_lookup.py    # Unit tests for lookup and cache
+│   ├── test_ddi_novelty.py       # Unit tests for leakage assertions and crossfit
+│   └── test_ddi_torch.py         # Unit tests for equivariance and conformal prediction
 ├── notebooks/
 │   └── exploration.ipynb         # Exploratory data analysis walkthrough notebook
 ├── results/
 │   ├── metrics.csv               # Comparative evaluation results CSV
-│   └── figures/                  # ROC curves and task metric plots
+│   ├── ddi_metrics.csv           # DDInter evaluation metrics CSV
+│   ├── ablation/                 # Tabular ablation study report and summary
+│   ├── ablation_gnn/             # GNN ablation study report and summary
+│   ├── overlap_analysis/         # Overlap analysis report and correlation results
+│   ├── controlled_overlap/       # Controlled synthetic overlap report
+│   └── figures/                  # ROC curves, training curves, saliency renders
 ├── requirements.txt
 └── README.md
 ```
